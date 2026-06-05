@@ -1,0 +1,30 @@
+:root { color-scheme: light; }
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #faf6f2;
+  color: #3f3640;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* the board manages its own scroll/pan */
+}
+
+button { font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; }
+
+/* thin, warm scrollbars for the side panels */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: #e6d8d0; border-radius: 8px; border: 2px solid #faf6f2; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* React Flow attribution tucked away */
+.react-flow__attribution { background: transparent !important; font-size: 9px; opacity: 0.4; }
+
+@keyframes swh-pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes swh-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

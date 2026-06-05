@@ -1,0 +1,25 @@
+{
+  "name": "getsafehome-team-board",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SafeWayHome — realtime team board (whiteboard + timeline + progress) for the 3-person dev team. Serverless realtime via Yjs + WebRTC.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "reactflow": "^11.11.4",
+    "trystero": "^0.25.1",
+    "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.18"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.2"
+  }
+}
