@@ -58,8 +58,8 @@ need to override them (or run a fully private rendezvous), pass your own:
 
 ## Deploy (GitHub Pages)
 
-This is deployed as the **root user site** at **https://tlangstrom.github.io/** from the repo
-`tlangstrom/tlangstrom.github.io`. Pushing to `main` triggers `.github/workflows/deploy.yml`, which
+This is deployed as the **org root site** at **https://safewayhome.github.io/** from the repo
+`safewayhome/safewayhome.github.io`. Pushing to `main` triggers `.github/workflows/deploy.yml`, which
 builds with Vite (base `/` for a `*.github.io` repo, `/<repo>/` otherwise) and publishes `dist/` to
 Pages. Enable once: **Repo → Settings → Pages → Source: GitHub Actions**.
 
