@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { T, CATEGORIES, PRESENCE_COLORS } from './theme'
 import { useTasks, usePeople, useConnection } from './store'
 import {
-  identity, setIdentity, createTask, maybeSeed, clearCursor,
+  identity, setIdentity, createTask, maybeSeed, clearCursor, allTasks,
   ROOM, ROOM_PASSWORD, RELAYS,
 } from './collab'
 import { SEED } from './seed'
@@ -60,6 +60,18 @@ export default function App() {
   const isVisible = (t) => cats[t.category] && !hiddenSubSet.has(t.category + ':' + t.sub)
   const visibleTasks = useMemo(() => tasks.filter(isVisible), [tasks, cats, hiddenSubSet])
 
+  // per-category done/total for the filter chips
+  const catStats = useMemo(() => {
+    const s = {}
+    for (const c of CATEGORIES) s[c.key] = { done: 0, total: 0 }
+    for (const t of tasks) {
+      if (!s[t.category]) continue
+      s[t.category].total++
+      if (t.status === 'done') s[t.category].done++
+    }
+    return s
+  }, [tasks])
+
   const editing = editingId ? tasks.find((t) => t.id === editingId) || null : null
 
   function toggleCat(key) {
@@ -75,11 +87,25 @@ export default function App() {
     setEditingId(id)
   }
 
+  // press "n" to add a task (when not typing in a field / modal)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'n' || e.metaKey || e.ctrlKey || e.altKey) return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      if (showName || showSettings || editingId) return
+      e.preventDefault()
+      addTask()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showName, showSettings, editingId, cats])
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <TopBar
         view={view} setView={setView}
-        cats={cats} toggleCat={toggleCat}
+        cats={cats} toggleCat={toggleCat} catStats={catStats}
         filterOpen={filterOpen} setFilterOpen={setFilterOpen}
         hiddenSubSet={hiddenSubSet} toggleSub={toggleSub}
         people={people} conn={conn}
@@ -120,7 +146,7 @@ export default function App() {
 /* ───────────────────────────── Top bar ───────────────────────────── */
 function TopBar(props) {
   const {
-    view, setView, cats, toggleCat, filterOpen, setFilterOpen,
+    view, setView, cats, toggleCat, catStats, filterOpen, setFilterOpen,
     hiddenSubSet, toggleSub, people, conn, onAdd, onName, onSettings,
   } = props
   return (
@@ -154,8 +180,9 @@ function TopBar(props) {
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {CATEGORIES.map((c) => {
           const on = cats[c.key]
+          const st = (catStats && catStats[c.key]) || { done: 0, total: 0 }
           return (
-            <button key={c.key} onClick={() => toggleCat(c.key)} title={`Visa/dölj ${c.label}`} style={{
+            <button key={c.key} onClick={() => toggleCat(c.key)} title={`Visa/dölj ${c.label} (${st.done}/${st.total} klara)`} style={{
               display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
               border: `1.5px solid ${on ? c.color : T.line}`,
               background: on ? c.color + '22' : T.panel, color: on ? T.ink : T.inkSoft,
@@ -167,6 +194,7 @@ function TopBar(props) {
                 color: '#fff', fontSize: 10, fontWeight: 900,
               }}>{on ? '✓' : ''}</span>
               <span>{c.glyph} {c.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: on ? c.color : T.inkSoft, opacity: 0.9 }}>{st.done}/{st.total}</span>
             </button>
           )
         })}
@@ -335,11 +363,30 @@ function SettingsModal({ onClose }) {
           </button>
         </div>
       </Field>
+      <Field label="Säkerhetskopia">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={exportBoard} style={btnGhost}>⤓ Exportera tavlan (JSON)</button>
+          <span style={{ fontSize: 11.5, color: T.inkSoft }}>Laddar ner alla uppgifter som en fil.</span>
+        </div>
+      </Field>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
         <button onClick={onClose} style={btnPrimary}>Stäng</button>
       </div>
     </ModalShell>
   )
+}
+
+function exportBoard() {
+  const payload = { exportedAt: new Date().toISOString(), room: ROOM, tasks: allTasks() }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `safewayhome-board-${ROOM}.json`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 function Field({ label, children }) {

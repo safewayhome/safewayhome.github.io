@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactFlow, {
-  Background, Controls, MiniMap, Handle, Position,
+  Background, Controls, MiniMap, Handle, Position, MarkerType,
   ReactFlowProvider, useReactFlow, useViewport, useNodesState, applyNodeChanges,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { T, CATEGORIES, CAT, STATUS } from '../theme'
-import { updateTask, setCursor, clearCursor } from '../collab'
+import { updateTask, createTask, setCursor, clearCursor } from '../collab'
 import { useCursors } from '../store'
-import { fraction, round1 } from '../util'
+import { fraction, round1, computeProgress } from '../util'
 
 const CURSOR_TTL = 6000 // hide a peer's cursor if it hasn't moved in this many ms
+const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' } // click status dot to cycle
 
 // category "hubs" anchored in a wide 2×2 spread; tasks ring around them → spider-web
 const HUBS = {
@@ -40,10 +41,13 @@ function buildNodes(allTasks, visibleTasks) {
   allTasks.slice().sort((a, b) => (a.order || 0) - (b.order || 0))
     .forEach((t) => { (byCat[t.category] ||= []).push(t.id) })
   const visibleCats = new Set(visibleTasks.map((t) => t.category))
+  // per-category completion shown as a ring on each hub
+  const catPct = {}
+  CATEGORIES.forEach((c) => { catPct[c.key] = computeProgress(allTasks.filter((t) => t.category === c.key)).pct })
   const nodes = []
   CATEGORIES.forEach((c) => {
     if (!visibleCats.has(c.key)) return
-    nodes.push({ id: 'hub-' + c.key, type: 'hub', position: HUBS[c.key] || { x: 0, y: 0 }, data: { cat: c }, draggable: false, selectable: false })
+    nodes.push({ id: 'hub-' + c.key, type: 'hub', position: HUBS[c.key] || { x: 0, y: 0 }, data: { cat: c, pct: catPct[c.key] }, draggable: false, selectable: false })
   })
   visibleTasks.forEach((t) => {
     const ids = byCat[t.category] || []
@@ -67,6 +71,7 @@ function buildEdges(visibleTasks) {
       if (vis.has(d)) edges.push({
         id: `dep-${d}-${t.id}`, source: d, target: t.id,
         sourceHandle: 's', targetHandle: 't', type: 'straight',
+        markerEnd: { type: MarkerType.ArrowClosed, color: T.rose, width: 16, height: 16 },
         style: { stroke: T.rose, strokeWidth: 1.4, strokeDasharray: '5 4', opacity: 0.6 },
       })
     })
@@ -95,8 +100,15 @@ function TaskNode({ data }) {
           {t.sub || cat.label}
         </span>
         <div style={{ flex: 1 }} />
-        {done ? <span style={{ color: T.done, fontWeight: 900, fontSize: 13 }}>✓</span>
-          : <span style={{ width: 8, height: 8, borderRadius: 999, background: s.color }} />}
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); updateTask(t.id, { status: NEXT_STATUS[t.status] || 'doing' }) }}
+          title={`Status: ${s.label} — klicka för att ändra`}
+          style={{ border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', width: 16, height: 16, display: 'grid', placeItems: 'center' }}
+        >
+          {done ? <span style={{ color: T.done, fontWeight: 900, fontSize: 13 }}>✓</span>
+            : <span style={{ width: 9, height: 9, borderRadius: 999, background: s.color, display: 'block' }} />}
+        </button>
       </div>
       <div style={{ fontSize: 13, fontWeight: 800, color: T.ink, lineHeight: 1.2, textDecoration: done ? 'line-through' : 'none' }}>
         {t.title}
@@ -113,17 +125,27 @@ function TaskNode({ data }) {
 
 function HubNode({ data }) {
   const c = data.cat
+  const pct = data.pct ?? 0
+  const R = 58
+  const C = 2 * Math.PI * R
   return (
     <div style={{
       width: 124, height: 124, borderRadius: 999, display: 'grid', placeItems: 'center', textAlign: 'center',
-      background: `radial-gradient(circle at 50% 38%, ${c.color}33, ${c.color}12)`,
-      border: `2px dashed ${c.color}aa`,
+      background: `radial-gradient(circle at 50% 38%, ${c.color}2e, ${c.color}10)`,
+      position: 'relative',
     }}>
+      {/* progress ring = how done this area is */}
+      <svg width="124" height="124" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+        <circle cx="62" cy="62" r={R} fill="none" stroke={c.color + '22'} strokeWidth="5" />
+        <circle cx="62" cy="62" r={R} fill="none" stroke={c.color} strokeWidth="5" strokeLinecap="round"
+          strokeDasharray={`${(C * pct) / 100} ${C}`} />
+      </svg>
       <Handle id="s" type="source" position={Position.Top} style={H} />
       <Handle id="t" type="target" position={Position.Top} style={H} />
-      <div>
-        <div style={{ fontSize: 26 }}>{c.glyph}</div>
-        <div style={{ fontSize: 13, fontWeight: 900, color: c.color }}>{c.label}</div>
+      <div style={{ position: 'relative' }}>
+        <div style={{ fontSize: 24 }}>{c.glyph}</div>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: c.color }}>{c.label}</div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: T.inkSoft }}>{pct}% klart</div>
       </div>
     </div>
   )
@@ -211,9 +233,31 @@ function Flow({ tasks, visibleTasks, onOpenTask }) {
     setCursor('board', p.x, p.y)
   }, [toFlow])
 
+  // double-click empty canvas → new task at that spot, in the nearest category's cluster
+  const onDoubleClick = useCallback((e) => {
+    if (!e.target.classList?.contains('react-flow__pane') || !toFlow) return
+    const p = toFlow({ x: e.clientX, y: e.clientY })
+    let best = 'dev'
+    let bestD = Infinity
+    for (const [k, pos] of Object.entries(HUBS)) {
+      const d = (pos.x - p.x) ** 2 + (pos.y - p.y) ** 2
+      if (d < bestD) { bestD = d; best = k }
+    }
+    const id = createTask({ category: best, x: Math.round(p.x), y: Math.round(p.y), title: 'Ny uppgift' })
+    onOpenTask(id)
+  }, [toFlow, onOpenTask])
+
+  const resetLayout = useCallback(() => {
+    if (!confirm('Återställ alla uppgifters positioner till standard-spindelnätet?')) return
+    visRef.current.forEach((t) => { if (t.x != null || t.y != null) updateTask(t.id, { x: null, y: null }) })
+    setTimeout(() => rf.fitView({ padding: 0.25, duration: 400 }), 60)
+  }, [rf])
+
+  const empty = visibleTasks.length === 0
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}
-      onMouseMove={onMouseMove} onMouseLeave={clearCursor}>
+      onMouseMove={onMouseMove} onMouseLeave={clearCursor} onDoubleClick={onDoubleClick}>
       <ReactFlow
         nodes={nodes} edges={edges} nodeTypes={nodeTypes}
         onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop} onNodeClick={onNodeClick}
@@ -229,6 +273,29 @@ function Flow({ tasks, visibleTasks, onOpenTask }) {
       </ReactFlow>
       <CursorsLayer />
       <Legend />
+
+      {/* reset layout */}
+      <button onClick={resetLayout} title="Återställ positioner" style={{
+        position: 'absolute', top: 14, right: 14, zIndex: 6, background: T.panel, border: `1px solid ${T.line}`,
+        borderRadius: 10, boxShadow: T.shadowSoft, padding: '7px 11px', fontSize: 12.5, fontWeight: 700, color: T.inkSoft,
+      }}>↺ Återställ layout</button>
+
+      {/* hint / empty-state */}
+      {empty ? (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', zIndex: 4,
+        }}>
+          <div style={{ textAlign: 'center', color: T.inkSoft, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: '20px 26px', boxShadow: T.shadowSoft }}>
+            <div style={{ fontSize: 30, marginBottom: 6 }}>🕸️</div>
+            <div style={{ fontWeight: 800, color: T.ink, marginBottom: 4 }}>Inget att visa i nuvarande filter</div>
+            <div style={{ fontSize: 13 }}>Slå på fler kategorier högst upp, eller <b>dubbelklicka</b> på ytan för att lägga till en uppgift.</div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 6, fontSize: 11, color: T.inkSoft, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 9, padding: '5px 9px', boxShadow: T.shadowSoft, whiteSpace: 'nowrap' }}>
+          dubbelklicka ytan = ny uppgift · klicka ✓-pricken = ändra status
+        </div>
+      )}
     </div>
   )
 }
@@ -236,7 +303,7 @@ function Flow({ tasks, visibleTasks, onOpenTask }) {
 function Legend() {
   return (
     <div style={{
-      position: 'absolute', left: 14, bottom: 14, zIndex: 6, background: T.panel, border: `1px solid ${T.line}`,
+      position: 'absolute', left: 14, top: 14, zIndex: 6, background: T.panel, border: `1px solid ${T.line}`,
       borderRadius: 12, boxShadow: T.shadowSoft, padding: '10px 12px', display: 'flex', gap: 14, fontSize: 11.5, fontWeight: 700, color: T.inkSoft,
     }}>
       {Object.entries(STATUS).map(([k, s]) => (
