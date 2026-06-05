@@ -214,6 +214,11 @@ function TopBar(props) {
       <ConnChip conn={conn} />
       <PresenceBar people={people} onName={onName} />
 
+      <a href="/app/" title="Öppna säkerhetsappen" style={{
+        textDecoration: 'none', border: `1px solid ${T.line}`, background: T.panel, color: T.ink,
+        fontWeight: 800, fontSize: 13, padding: '8px 12px', borderRadius: 11,
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+      }}>🛡️ Appen ↗</a>
       <button onClick={onAdd} style={{
         border: 'none', background: T.rose, color: '#fff', fontWeight: 800, fontSize: 13.5,
         padding: '9px 14px', borderRadius: 11, boxShadow: T.shadowSoft,
