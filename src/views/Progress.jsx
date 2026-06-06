@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { T } from '../theme'
 import { computeProgress, progressByCategory, progressByDifficulty } from '../util'
+import { SYSTEM_DESC } from '../changelogData'
 
 export default function Progress({ visibleTasks }) {
   const overall = useMemo(() => computeProgress(visibleTasks), [visibleTasks])
@@ -51,18 +52,13 @@ export default function Progress({ visibleTasks }) {
           ))}
         </div>
 
-        {/* narrativ — den mänskliga texten progressbaren hänger ihop med */}
-        <div style={{ background: T.roseSoft, borderRadius: 16, padding: '18px 20px', marginBottom: 26, lineHeight: 1.65, fontSize: 14, color: T.ink }}>
-          <b>Sammanfattning.</b> Teamet har gjort klart <b>{done} av {n}</b> uppdrag
-          (<b>≈{overall.pct}%</b>).{' '}
-          {counts.todo === 0 && counts.doing === 0
-            ? 'Allt i nuvarande vy är klart — snyggt jobbat! 🎉'
-            : <>Just nu pågår <b>{counts.doing}</b> uppdrag och <b>{counts.todo}</b> är ännu inte påbörjade.</>}
-          {' '}Svårighetsgraden visar var den tyngsta jobbet finns:{' '}
-          {byDiff.filter((r) => r.n > 0).map((r, i, arr) => (
-            <span key={r.diff.key}>
-              <b style={{ color: r.diff.text }}>{r.diff.label.toLowerCase()}</b> {r.done}/{r.n}{i < arr.length - 1 ? ', ' : '.'}
-            </span>
+        {/* Vad är LedMig? — den mänskliga beskrivningen i stället för en torr sifferrad */}
+        <div style={{ background: T.roseSoft, borderRadius: 16, padding: '20px 22px', marginBottom: 26 }}>
+          <div style={{ fontSize: 16.5, fontWeight: 900, color: T.ink, lineHeight: 1.4, marginBottom: 12 }}>
+            {SYSTEM_DESC.tagline}
+          </div>
+          {SYSTEM_DESC.paragraphs.map((p, i) => (
+            <p key={i} style={{ fontSize: 13.5, lineHeight: 1.65, color: T.ink, margin: i ? '11px 0 0' : 0 }}>{p}</p>
           ))}
         </div>
 

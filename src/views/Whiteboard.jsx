@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactFlow, {
   Background, Controls, MiniMap, Handle, Position, MarkerType,
   ReactFlowProvider, useReactFlow, useViewport, useNodesState, applyNodeChanges,
+  useStore, getBezierPath,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { T, CATEGORIES, CAT, STATUS, DIFFICULTIES } from '../theme'
@@ -53,7 +54,11 @@ function buildNodes(allTasks, visibleTasks, lanes, onAddCard) {
   return nodes
 }
 
-function buildEdges(visibleTasks) {
+// Beroendelinjer som FLYTANDE bågar: i stället för fasta topp→botten-handtag (som tvingar
+// fram boxiga L-former tvärs över korten) ankras varje linje på den punkt av kortets kant som
+// pekar mot motparten. Resultatet blir korta, raka bezier-bågar kant-till-kant — mycket mindre
+// "grötigt". focusId (kortet musen är över) lyser upp just dess kopplingar och dämpar resten.
+function buildEdges(visibleTasks, focusId) {
   const vis = new Set(visibleTasks.map((t) => t.id))
   const catById = Object.fromEntries(visibleTasks.map((t) => [t.id, t.category]))
   const edges = []
@@ -61,16 +66,70 @@ function buildEdges(visibleTasks) {
     (t.deps || []).forEach((d) => {
       if (!vis.has(d)) return
       const color = (CAT[catById[d]] || {}).color || T.rose
+      const connected = focusId && (d === focusId || t.id === focusId)
+      let stroke = color, strokeWidth = 1.6, opacity = 0.3
+      let marker = { type: MarkerType.ArrowClosed, color, width: 13, height: 13 }
+      if (focusId) {
+        if (connected) {
+          strokeWidth = 2.6; opacity = 1
+          marker = { type: MarkerType.ArrowClosed, color, width: 17, height: 17 }
+        } else {
+          stroke = '#bcb3b9'; strokeWidth = 1.2; opacity = 0.08; marker = undefined // dämpa orelaterade
+        }
+      }
       edges.push({
         id: `dep-${d}-${t.id}`, source: d, target: t.id, sourceHandle: 's', targetHandle: 't',
-        type: 'smoothstep', pathOptions: { borderRadius: 18 },
-        markerEnd: { type: MarkerType.ArrowClosed, color, width: 17, height: 17 },
-        style: { stroke: color, strokeWidth: 2, opacity: 0.5 },
+        type: 'floating',
+        markerEnd: marker,
+        style: { stroke, strokeWidth, opacity, transition: 'opacity .18s ease, stroke-width .18s ease' },
+        zIndex: connected ? 6 : 0,
       })
     })
   })
   return edges
 }
+
+/* ── flytande bezier-bågar (kant-till-kant) ──────────────────────────────── */
+// Skär linjen mellan två nodcentrum mot `node`:s rektangel → ankarpunkt på kanten.
+function nodeEdgePoint(node, other) {
+  const w = (node.width || CARD_W) / 2
+  const h = (node.height || 70) / 2
+  const p = node.positionAbsolute || node.position || { x: 0, y: 0 }
+  const op = other.positionAbsolute || other.position || { x: 0, y: 0 }
+  const x2 = p.x + w, y2 = p.y + h
+  const x1 = op.x + (other.width || CARD_W) / 2
+  const y1 = op.y + (other.height || 70) / 2
+  const xx = (x1 - x2) / (2 * w) - (y1 - y2) / (2 * h)
+  const yy = (x1 - x2) / (2 * w) + (y1 - y2) / (2 * h)
+  const a = 1 / (Math.abs(xx) + Math.abs(yy) || 1)
+  return { x: w * (a * xx + a * yy) + x2, y: h * (-a * xx + a * yy) + y2 }
+}
+function edgeSide(node, pt) {
+  const p = node.positionAbsolute || node.position || { x: 0, y: 0 }
+  const nx = Math.round(p.x), ny = Math.round(p.y)
+  const px = Math.round(pt.x), py = Math.round(pt.y)
+  if (px <= nx + 1) return Position.Left
+  if (px >= nx + (node.width || CARD_W) - 1) return Position.Right
+  if (py <= ny + 1) return Position.Top
+  if (py >= ny + (node.height || 70) - 1) return Position.Bottom
+  return Position.Top
+}
+
+function FloatingEdge({ id, source, target, markerEnd, style }) {
+  const sourceNode = useStore(useCallback((s) => s.nodeInternals.get(source), [source]))
+  const targetNode = useStore(useCallback((s) => s.nodeInternals.get(target), [target]))
+  if (!sourceNode || !targetNode || !sourceNode.width || !targetNode.width) return null
+  const sp = nodeEdgePoint(sourceNode, targetNode)
+  const tp = nodeEdgePoint(targetNode, sourceNode)
+  const [path] = getBezierPath({
+    sourceX: sp.x, sourceY: sp.y, sourcePosition: edgeSide(sourceNode, sp),
+    targetX: tp.x, targetY: tp.y, targetPosition: edgeSide(targetNode, tp),
+    curvature: 0.28,
+  })
+  return <path id={id} className="react-flow__edge-path" d={path} markerEnd={markerEnd} style={style} />
+}
+
+const edgeTypes = { floating: FloatingEdge }
 
 /* ───────────────────────────── custom nodes ───────────────────────────── */
 function TaskNode({ data }) {
@@ -201,7 +260,8 @@ function CursorsLayer() {
 function Flow({ tasks, visibleTasks, cats, onOpenTask }) {
   const rf = useReactFlow()
   const [nodes, setNodes] = useNodesState([])
-  const edges = useMemo(() => buildEdges(visibleTasks), [visibleTasks])
+  const [hoveredId, setHoveredId] = useState(null) // kortet musen är över → lyser upp dess kopplingar
+  const edges = useMemo(() => buildEdges(visibleTasks, hoveredId), [visibleTasks, hoveredId])
   const draggingRef = useRef(false)
 
   // synliga kolumner = de team-kategorier som är påslagna i toppfiltret
@@ -253,6 +313,12 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask }) {
     if (node.type === 'task') onOpenTask(node.id)
   }, [onOpenTask])
 
+  // hovra ett kort → lys upp dess beroendelinjer (och dämpa övriga); rensa när musen lämnar
+  const onNodeMouseEnter = useCallback((_e, node) => {
+    if (node.type === 'task' && !draggingRef.current) setHoveredId(node.id)
+  }, [])
+  const onNodeMouseLeave = useCallback(() => setHoveredId(null), [])
+
   const toFlow = rf.screenToFlowPosition || rf.project
   const onMouseMove = useCallback((e) => {
     if (!toFlow) return
@@ -282,8 +348,9 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask }) {
     <div style={{ width: '100%', height: '100%', position: 'relative' }}
       onMouseMove={onMouseMove} onMouseLeave={clearCursor} onDoubleClick={onDoubleClick}>
       <ReactFlow
-        nodes={nodes} edges={edges} nodeTypes={nodeTypes}
+        nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
         onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop} onNodeClick={onNodeClick}
+        onNodeMouseEnter={onNodeMouseEnter} onNodeMouseLeave={onNodeMouseLeave}
         fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.2} maxZoom={1.8}
         proOptions={{ hideAttribution: false }} nodesConnectable={false} elementsSelectable
         zoomOnDoubleClick={false}
@@ -317,7 +384,7 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask }) {
         </div>
       ) : (
         <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 6, fontSize: 11, color: T.inkSoft, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 9, padding: '5px 9px', boxShadow: T.shadowSoft, whiteSpace: 'nowrap' }}>
-          ＋ i en kolumnrubrik = nytt kort · dubbelklicka ytan = nytt kort · klicka statusprick = ändra status
+＋ i en kolumnrubrik = nytt kort · dubbelklicka ytan = nytt kort · klicka statusprick = ändra status · håll musen över ett kort = lys upp dess kopplingar
         </div>
       )}
     </div>
