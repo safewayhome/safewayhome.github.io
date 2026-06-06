@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { T, CATEGORIES, CAT, STATUS, DIFFICULTIES } from '../theme'
-import { updateTask, deleteTask, setEditing, pingTyping } from '../collab'
+import { updateTask, deleteTask, setEditing, pingTyping, fetchActivity, onActivity, getActivity } from '../collab'
 import { usePeople } from '../store'
 import { ago, diffKey } from '../util'
 import { Avatar } from './Avatar.jsx'
@@ -17,12 +17,22 @@ const seedDraft = (t) => ({
 export default function TaskEditor({ task, allTasks, onClose }) {
   const people = usePeople()
   const [draft, setDraft] = useState(() => seedDraft(task))
+  const [activity, setActivity] = useState(() => getActivity(task.id))
 
   // tell the team you're editing this task; re-seed the draft when switching to another task
   useEffect(() => {
     setEditing(task.id)
     setDraft(seedDraft(task))
     return () => setEditing(null)
+  }, [task.id])
+
+  // historik: visa cachen direkt, hämta från DB:n, och lyssna på nya rader (egna + andras) live
+  useEffect(() => {
+    setActivity(getActivity(task.id))
+    let alive = true
+    fetchActivity(task.id).then((rows) => { if (alive) setActivity(rows.slice()) })
+    const unsub = onActivity(task.id, (rows) => setActivity(rows.slice()))
+    return () => { alive = false; unsub() }
   }, [task.id])
 
   const cat = CAT[task.category] || CATEGORIES[0]
@@ -142,6 +152,30 @@ export default function TaskEditor({ task, allTasks, onClose }) {
                 </label>
               )
             })}
+          </div>
+
+          {/* Historik: vem gjorde vad, nyast först (likt Drive-versionshistorik). Skapare överst. */}
+          <Label>Historik</Label>
+          {task.createdBy && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px 2px', fontSize: 12, color: T.inkSoft }}>
+              <Avatar name={task.createdBy.name} color={task.createdBy.color} size={20} />
+              <span>Skapat av <b style={{ color: T.ink }}>{task.createdBy.name}</b>{task.createdAt ? ` · ${ago(task.createdAt)}` : ''}</span>
+            </div>
+          )}
+          <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 8, maxHeight: 190, overflow: 'auto' }}>
+            {activity.length === 0 && (
+              <div style={{ fontSize: 12.5, color: T.inkSoft, padding: 4 }}>Inga ändringar loggade än.</div>
+            )}
+            {activity.map((a, i) => (
+              <div key={a.cid || i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 4px' }}>
+                <Avatar name={a.actor_name} color={a.actor_color || T.todo} size={20} />
+                <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: 1.35 }}>
+                  {/* actor_name/summary kommer från peers: rendera bara som text (aldrig dangerouslySetInnerHTML) */}
+                  <span style={{ color: T.ink }}><b>{a.actor_name || 'någon'}</b> {a.summary}</span>
+                  <div style={{ fontSize: 10.5, color: T.inkSoft }}>{ago(Date.parse(a.at))}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 

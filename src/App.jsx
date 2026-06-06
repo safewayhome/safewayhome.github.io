@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { T, CATEGORIES, PRESENCE_COLORS } from './theme'
 import { useTasks, usePeople, useConnection } from './store'
 import {
-  identity, setIdentity, createTask, maybeSeed, clearCursor, allTasks,
-  ROOM, ROOM_PASSWORD, RELAYS,
+  identity, setIdentity, createTask, maybeSeed, clearCursor, allTasks, BOARD_ID,
 } from './collab'
 import { SEED } from './seed'
 import Whiteboard from './views/Whiteboard.jsx'
@@ -120,7 +119,7 @@ export default function App() {
 
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {view === 'board' && (
-          <Whiteboard tasks={tasks} visibleTasks={visibleTasks} cats={cats} onOpenTask={setEditingId} />
+          <Whiteboard tasks={tasks} visibleTasks={visibleTasks} cats={cats} onOpenTask={setEditingId} paused={!!editingId} />
         )}
         {view === 'timeline' && (
           <Timeline tasks={tasks} visibleTasks={visibleTasks} onOpenTask={setEditingId} />
@@ -235,7 +234,7 @@ function TopBar(props) {
         border: 'none', background: T.rose, color: '#fff', fontWeight: 800, fontSize: 13.5,
         padding: '9px 14px', borderRadius: 11, boxShadow: T.shadowSoft,
       }}>＋ Uppgift</button>
-      <button onClick={onSettings} title="Inställningar (rum / signaling)" style={{
+      <button onClick={onSettings} title="Inställningar" style={{
         border: `1px solid ${T.line}`, background: T.panel, borderRadius: 10, padding: '8px 10px', fontSize: 15,
       }}>⚙️</button>
     </header>
@@ -271,16 +270,24 @@ function SubFilterPopover({ cats, hiddenSubSet, toggleSub, onClose }) {
   )
 }
 
+// Statusen speglar nu DATABASEN, inte P2P-peers: "synkad" = allt sparas i Supabase och syns för
+// alla (även när man är ensam). "lokalt läge" = DB ej ansluten ännu (sparas lokalt, synkas sen).
 function ConnChip({ conn }) {
-  const people = conn.peers
-  const color = conn.online ? T.done : T.doing
+  const synced = conn.synced
+  const color = synced ? T.done : T.doing
+  const label = !synced ? 'lokalt läge' : (conn.online ? `${conn.peers + 1} online` : 'synkad')
+  const title = !synced
+    ? 'Databasen är inte ansluten: ändringar sparas lokalt och synkas så fort DB:n svarar.'
+    : (conn.online
+      ? `${conn.peers} andra online · allt sparas direkt i databasen`
+      : 'Sparat i databasen · syns för alla, även när ingen annan är online')
   return (
-    <div title={conn.online ? `${people} peer(s) anslutna` : 'Väntar på andra (du jobbar offline tills någon ansluter)'} style={{
+    <div title={title} style={{
       display: 'flex', alignItems: 'center', gap: 7, padding: '6px 11px', borderRadius: 999,
       background: color + '1e', color: T.ink, fontWeight: 700, fontSize: 12.5, border: `1px solid ${color}55`,
     }}>
-      <span style={{ width: 8, height: 8, borderRadius: 999, background: color, animation: conn.online ? 'none' : 'lm-pulse 1.4s infinite' }} />
-      {conn.online ? `${people + 1} online` : 'offline'}
+      <span style={{ width: 8, height: 8, borderRadius: 999, background: color, animation: synced ? 'none' : 'lm-pulse 1.4s infinite' }} />
+      {label}
     </div>
   )
 }
@@ -352,25 +359,20 @@ function NameModal({ onSave, canCancel, onCancel }) {
 }
 
 function SettingsModal({ onClose }) {
-  const link = `${location.origin}${location.pathname}?room=${encodeURIComponent(ROOM)}&pass=${encodeURIComponent(ROOM_PASSWORD)}`
+  const isCustom = BOARD_ID !== 'ledmig-team-v1'
+  const link = `${location.origin}${location.pathname}${isCustom ? `?board=${encodeURIComponent(BOARD_ID)}` : ''}`
   const [copied, setCopied] = useState(false)
   return (
     <ModalShell onClose={onClose} width={520}>
       <div style={{ fontWeight: 800, fontSize: 18, color: T.ink, marginBottom: 14 }}>Inställningar</div>
-      <Field label="Rum (alla i teamet måste ha samma)">
-        <code style={codeBox}>{ROOM}</code>
-      </Field>
-      <Field label="Lösenord (krypterar datan mellan er)">
-        <code style={codeBox}>{ROOM_PASSWORD}</code>
-      </Field>
-      <Field label="Nostr-rellän (kopplar ihop er; datan går peer-to-peer & krypterat)">
-        <code style={{ ...codeBox, fontSize: 11.5 }}>{RELAYS.join('\n')}</code>
+      <Field label="Tavla (board-id)">
+        <code style={codeBox}>{BOARD_ID}</code>
       </Field>
       <div style={{ fontSize: 12.5, color: T.inkSoft, lineHeight: 1.5, margin: '6px 0 16px' }}>
-        Bjud in teamet med länken nedan. Vill ni byta rum eller köra privat: lägg till
-        <code style={inlineCode}>?room=…&amp;pass=…</code> i URL:en (sparas lokalt). Relälistan kan
-        bytas med <code style={inlineCode}>?relays=wss://a,wss://b</code>. Inga konton, ingen server —
-        relläna kopplar bara ihop er, själva datan går direkt mellan era webbläsare.
+        Allt sparas direkt i en delad databas (Supabase) och synkas i realtid: en ändring syns för
+        hela teamet med en gång, även när ingen annan är online. Varje kort har en redigeringshistorik
+        och visar vem som skapat det. Vill ni köra en separat, privat tavla: lägg till
+        <code style={inlineCode}>?board=…</code> i URL:en (sparas lokalt).
       </div>
       <Field label="Inbjudningslänk">
         <div style={{ display: 'flex', gap: 8 }}>
@@ -394,12 +396,12 @@ function SettingsModal({ onClose }) {
 }
 
 function exportBoard() {
-  const payload = { exportedAt: new Date().toISOString(), room: ROOM, tasks: allTasks() }
+  const payload = { exportedAt: new Date().toISOString(), board: BOARD_ID, tasks: allTasks() }
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `ledmig-board-${ROOM}.json`
+  a.download = `ledmig-board-${BOARD_ID}.json`
   document.body.appendChild(a)
   a.click()
   a.remove()

@@ -88,7 +88,7 @@ export const SEED = [
   { id: 'seed_board', category: 'dev', sub: 'Team-board', status: 'doing', difficulty: 'medel',
     title: 'Team-board (denna sida)',
     description: 'Whiteboard + timeline + progress, i realtid för teamet.',
-    approach: 'Yjs + Trystero (Nostr) P2P, React Flow; deployas på GitHub Pages.', deps: ['seed_theme'] },
+    approach: 'Supabase Postgres + Realtime (delad DB, historik per kort, skapar-avatar), React Flow; deployas på GitHub Pages.', deps: ['seed_theme'] },
 
   // ──────────────────────────── Marknadsföring ───────────────────────
   { id: 'seed_report', category: 'mkt', sub: 'Exjobb & rapport', status: 'doing', difficulty: 'extrem',

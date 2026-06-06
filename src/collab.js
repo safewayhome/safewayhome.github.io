@@ -1,122 +1,103 @@
 /**
- * Realtime backbone: serverless, no backend, no accounts.
+ * Datalager + realtid för team-boarden: Supabase Postgres som SANNINGSKÄLLA.
  *
- *   Yjs (CRDT)  ·  Trystero over Nostr relays (peer-to-peer WebRTC)  ·  y-indexeddb (offline)
+ *   board_tasks (Postgres)  ·  Supabase Realtime (postgres_changes + presence)  ·  localStorage-cache
  *
- * Trystero brokers the WebRTC handshake over public Nostr relays (redundant + maintained — the
- * old y-webrtc public signaling servers are dead), then the actual task data + awareness flow
- * directly peer-to-peer and are encrypted with the room password. Edits merge conflict-free
- * (CRDT), and each client keeps a local copy in IndexedDB so the board works offline and reloads.
+ * Skillnaden mot den gamla P2P-tavlan: en ändring skrivs DIREKT till databasen och syns för
+ * alla, även om ingen annan är online just nu (FigJam/MS Whiteboard-modellen). Varje redigering
+ * loggas dessutom som en rad i board_activity (historik per kort), och vem som skapade ett kort
+ * sparas i created_by.
  *
- * Room / password / relays are overridable so a team can run privately:
- *   ?room=...   ?pass=...   ?relays=wss://a,wss://b   (also persisted in localStorage)
+ * Konfliktmodell (viktig): kolumn-scopade skrivningar + optimistisk per-fält-bekräftelse.
+ *   - En ändring skriver BARA de kolumner som ändrades (.update), aldrig hela raden. Två personer
+ *     som rör OLIKA fält på samma kort krockar därför aldrig.
+ *   - Lokalt ändrade fält markeras "dirty". Ett inkommande realtime-eko mergas in fält för fält:
+ *     fält vi har osparade lokala ändringar på behålls tills DB:n bekräftar samma värde (eller en
+ *     TTL löper ut). Så en kollegas diskreta ändring (status/position) syns direkt även MEDAN man
+ *     skriver i fritext, utan att vår text rycks bort eller deras ändring klottras över.
+ *
+ * Tre realtidsspår: 1) data (postgres_changes), 2) presence (online + vem redigerar), 3) cursors
+ * (högfrekvent broadcast, lagras ej).
+ *
+ * Mjuk degradering: når vi inte Supabase (eller saknas tabellerna) faller allt tillbaka till ett
+ * LOKALT läge (localStorage). Kort som skapas lokalt synkas UPP till DB:n så fort den svarar
+ * (de raderas alltså inte). Därför kan sajten deployas innan schema.sql körts.
+ *
+ * Publika API:t (createTask/updateTask/.../stores/presence) är medvetet identiskt med den gamla
+ * modulen så att vyerna (App/Whiteboard/TaskEditor) inte behövde skrivas om.
  */
-import * as Y from 'yjs'
-import { IndexeddbPersistence } from 'y-indexeddb'
-import { joinRoom } from 'trystero/nostr'
-import {
-  Awareness, encodeAwarenessUpdate, applyAwarenessUpdate,
-} from 'y-protocols/awareness'
-import { PRESENCE_COLORS, DEFAULT_DIFFICULTY } from './theme'
+import { supabase, supabaseEnabled } from './supabaseClient'
+import { PRESENCE_COLORS, DEFAULT_DIFFICULTY, STATUS, DIFF, CAT } from './theme'
 
 // --------------------------------------------------------------------------- config
 const params = new URLSearchParams(location.search)
-// Persist invite-link overrides so they actually "stick" across reloads — otherwise an
-// invited teammate would silently drop back to the default room on the next refresh.
-;['room', 'pass', 'relays'].forEach((k) => {
-  const v = params.get(k)
-  if (v != null && v !== '') { try { localStorage.setItem('lm.' + k, v) } catch { /* ignore */ } }
-})
-const cfg = (key, fallback) =>
-  params.get(key) || localStorage.getItem('lm.' + key) || fallback
+// Ett team = en board. ?board=... låter er köra en separat (privat) tavla; sparas lokalt.
+const boardParam = params.get('board')
+if (boardParam) { try { localStorage.setItem('lm.board', boardParam) } catch { /* ignore */ } }
+export const BOARD_ID = boardParam || (() => { try { return localStorage.getItem('lm.board') } catch { return null } })() || 'ledmig-team-v1'
+export const ROOM = BOARD_ID // bakåtkompatibelt namn (används som etikett i UI:t)
 
-// Security model: this is a *shared secret / hard-to-guess room*, not per-user auth. The
-// room+password ship in the public bundle, so treat the board as internal-but-not-confidential.
-// For a private room, share an invite link with a custom ?room=&pass= (persisted above).
-export const ROOM = cfg('room', 'ledmig-team-v1')
-export const ROOM_PASSWORD = cfg('pass', 'getsafehome-2026') // E2E-encrypts the P2P payload
-const APP_ID = 'ledmig-team-board' // namespaces the app across all teammates
+const CACHE_KEY = 'lm.board.cache.' + BOARD_ID    // speglar DB:n lokalt -> direkt paint + offline-tålighet
+const ACT_KEY = 'lm.board.act.' + BOARD_ID        // historik-cache (lokalt läge + snabb omladdning)
+const SYNC_KEY = 'lm.board.synced.' + BOARD_ID     // id:n som någon gång round-trippat genom DB:n
+const ACT_CAP = 40                                // tak på cachade historikrader per kort
+const DIRTY_TTL = 10000                           // ms innan vi ger upp att vänta på DB-bekräftelse på ett fält
 
-// Verified-reachable public Nostr relays (used only for signaling; data stays P2P).
-const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://nos.lol',
-  'wss://relay.primal.net',
-  'wss://nostr.mom',
-  'wss://relay.nostr.net',
-  'wss://nostr-pub.wellorder.net',
-]
-const relaysRaw = cfg('relays', '')
-export const RELAYS = (relaysRaw ? relaysRaw.split(',') : DEFAULT_RELAYS)
-  .map((s) => s.trim())
-  .filter((s) => /^wss:\/\//i.test(s))
-if (RELAYS.length === 0) RELAYS.push(...DEFAULT_RELAYS)
+const rnd = () => Math.random().toString(36).slice(2, 9)
+const uuid = () => (globalThis.crypto?.randomUUID?.() || (rnd() + rnd() + Date.now().toString(36)))
+const perfNow = () => (globalThis.performance?.now?.() ?? Date.now())
+function eq(a, b) {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v, i) => v === b[i])
+  return false
+}
 
-// --------------------------------------------------------------------------- document + transport
-export const ydoc = new Y.Doc()
-export const yTasks = ydoc.getMap('tasks') // id -> Y.Map(fields)
-export const yMeta = ydoc.getMap('meta')
-export const awareness = new Awareness(ydoc)
+// --------------------------------------------------------------------------- minimal external store
+// Liten store för useSyncExternalStore: ny snapshot-referens bara när vi faktiskt sätter värde
+// (vi anropar set() enbart vid riktiga ändringar), annars samma referens => inga onödiga renders.
+function createStore(initial) {
+  let snap = initial
+  const listeners = new Set()
+  return {
+    set(v) { snap = v; listeners.forEach((l) => l()) },
+    get: () => snap,
+    subscribe(cb) { listeners.add(cb); return () => listeners.delete(cb) },
+  }
+}
 
-export const persistence = new IndexeddbPersistence('lm-team-board::' + ROOM, ydoc)
+export const tasksStore = createStore([])
+export const peopleStore = createStore([])
+export const cursorsStore = createStore([])
+export const connStore = createStore({ peers: 0, online: false, synced: false })
 
-const room = joinRoom(
-  { appId: APP_ID, password: ROOM_PASSWORD, relayConfig: { urls: RELAYS, redundancy: Math.min(5, RELAYS.length) } },
-  ROOM,
-)
+// --------------------------------------------------------------------------- in-memory state
+const tasks = new Map()        // id -> task (app-formad, camelCase)
+let dbMode = false             // true = Supabase nås och tabellerna finns
+const pushTasks = () => tasksStore.set([...tasks.values()])
 
-const docAction = room.makeAction('ydoc')
-const awrAction = room.makeAction('awr')
+// dirty: fält vi ändrat lokalt men ännu inte fått DB-bekräftelse på. id -> Map(field -> {val, ts}).
+const dirty = new Map()
+// id:n som round-trippat DB:n (persistent) resp. rörts denna session (in-memory). Skiljer
+// "raderad på annan enhet medan jag var borta" från "skapad lokalt, aldrig synkad".
+const syncedIds = new Set()
+const sessionIds = new Set()
+const realtimeDeleted = new Set() // id:n som raderats via realtime denna session (så initialladdningen inte återuppväcker dem)
+const createPromises = new Map() // id -> promise: gate:ar board_activity-insert tills task-raden finns (FK)
 
-const toU8 = (d) =>
-  d instanceof Uint8Array ? d
-    : d instanceof ArrayBuffer ? new Uint8Array(d)
-      : new Uint8Array(d.buffer, d.byteOffset, d.byteLength)
-
-// outgoing/incoming Yjs document updates
-ydoc.on('update', (update, origin) => {
-  if (origin === 'remote') return // don't echo updates we just applied from a peer
-  docAction.send(update).catch(() => {})
-})
-docAction.onMessage = (data) => Y.applyUpdate(ydoc, toU8(data), 'remote')
-
-// outgoing/incoming awareness (cursors / editing / typing / identity)
-awareness.on('update', ({ added, updated, removed }, origin) => {
-  if (origin === 'remote') return
-  const mine = added.concat(updated, removed).includes(awareness.clientID)
-  if (mine) awrAction.send(encodeAwarenessUpdate(awareness, [awareness.clientID])).catch(() => {})
-})
-awrAction.onMessage = (data) => applyAwarenessUpdate(awareness, toU8(data), 'remote')
+const MAPPABLE = new Set(['title', 'description', 'approach', 'category', 'sub', 'status', 'difficulty', 'order', 'x', 'y', 'deps', 'createdBy'])
 
 // --------------------------------------------------------------------------- identity
 function loadIdentity() {
   let id = localStorage.getItem('lm.clientId')
-  if (!id) {
-    id = Math.random().toString(36).slice(2, 10)
-    localStorage.setItem('lm.clientId', id)
-  }
+  if (!id) { id = rnd(); localStorage.setItem('lm.clientId', id) }
   let colorIdx = parseInt(localStorage.getItem('lm.colorIdx') ?? '', 10)
   if (Number.isNaN(colorIdx)) {
     colorIdx = Math.floor(Math.random() * PRESENCE_COLORS.length)
     localStorage.setItem('lm.colorIdx', String(colorIdx))
   }
-  return {
-    id,
-    name: localStorage.getItem('lm.name') || '',
-    colorIdx,
-    color: PRESENCE_COLORS[colorIdx % PRESENCE_COLORS.length],
-  }
+  return { id, name: localStorage.getItem('lm.name') || '', colorIdx, color: PRESENCE_COLORS[colorIdx % PRESENCE_COLORS.length] }
 }
 export let identity = loadIdentity()
-
-function publishUser() {
-  awareness.setLocalStateField('user', {
-    id: identity.id,
-    name: identity.name || 'Gäst',
-    color: identity.color,
-  })
-}
-publishUser()
 
 export function setIdentity(patch) {
   identity = { ...identity, ...patch }
@@ -125,250 +106,475 @@ export function setIdentity(patch) {
     localStorage.setItem('lm.colorIdx', String(patch.colorIdx))
     identity.color = PRESENCE_COLORS[patch.colorIdx % PRESENCE_COLORS.length]
   }
-  publishUser()
+  trackPresence() // republicera namn/färg till de andra direkt
 }
 
-// --------------------------------------------------------------------------- presence (cursor / editing / typing)
-let lastCursorTs = 0
-export function setCursor(view, x, y) {
-  const now = performance.now()
-  if (now - lastCursorTs < 40) return // throttle ~25fps
-  lastCursorTs = now
-  awareness.setLocalStateField('cursor', { view, x, y, t: Date.now() })
+// --------------------------------------------------------------------------- row <-> task mapping
+// DB:n är snake_case (sort_order/created_by/...), appen camelCase (order/createdBy/...).
+const COL = { order: 'sort_order', createdBy: 'created_by' }
+const col = (k) => COL[k] || k
+function rowToTask(r) {
+  return {
+    id: r.id,
+    title: r.title ?? '', description: r.description ?? '', approach: r.approach ?? '',
+    category: r.category ?? 'dev', sub: r.sub ?? '',
+    status: r.status ?? 'todo', difficulty: r.difficulty ?? DEFAULT_DIFFICULTY,
+    order: r.sort_order ?? 0,
+    x: r.x ?? null, y: r.y ?? null,
+    deps: Array.isArray(r.deps) ? r.deps : (r.deps ?? []),
+    createdBy: r.created_by ?? null, updatedBy: r.updated_by ?? null,
+    createdAt: r.created_at ? Date.parse(r.created_at) : null,
+    updatedAt: r.updated_at ? Date.parse(r.updated_at) : Date.now(),
+  }
 }
-export function clearCursor() {
-  awareness.setLocalStateField('cursor', null)
+function taskToRow(t) {
+  return {
+    id: t.id, title: t.title, description: t.description, approach: t.approach,
+    category: t.category, sub: t.sub, status: t.status, difficulty: t.difficulty,
+    sort_order: t.order ?? 0, x: t.x ?? null, y: t.y ?? null,
+    deps: t.deps ?? [], created_by: t.createdBy ?? null,
+    updated_by: t.updatedBy ?? (identity.name || 'någon'),
+  }
 }
-export function setEditing(taskId) {
-  awareness.setLocalStateField('editing', taskId || null)
-}
-let typingTimer = null
-export function pingTyping() {
-  awareness.setLocalStateField('typing', true)
-  clearTimeout(typingTimer)
-  typingTimer = setTimeout(() => awareness.setLocalStateField('typing', false), 1500)
-}
-
-// drop our presence cleanly on tab close; hide our cursor when the tab is backgrounded
-if (typeof window !== 'undefined') {
-  window.addEventListener('pagehide', () => { try { awareness.setLocalState(null) } catch { /* ignore */ } })
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') clearCursor()
-  })
-}
-
-// --------------------------------------------------------------------------- task helpers
-const plain = (ymap) => {
-  const o = {}
-  ymap.forEach((v, k) => (o[k] = v))
-  return o
+// Plocka ut en delmängd kolumner ur en task för en kolumn-scopad .update().
+function rowSubset(t, fields) {
+  const out = {}
+  fields.forEach((k) => { out[col(k)] = (k === 'deps' ? (t.deps ?? []) : t[k]) })
+  return out
 }
 
-export function allTasks() {
-  const arr = []
-  yTasks.forEach((ymap, id) => arr.push({ id, ...plain(ymap) }))
-  return arr
+// --------------------------------------------------------------------------- caches
+function saveCache() { try { localStorage.setItem(CACHE_KEY, JSON.stringify([...tasks.values()])) } catch { /* ignore */ } }
+function loadCache() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]')
+    if (Array.isArray(arr)) arr.forEach((t) => t && t.id && tasks.set(t.id, t))
+  } catch { /* ignore */ }
 }
+function loadSynced() {
+  try { const a = JSON.parse(localStorage.getItem(SYNC_KEY) || '[]'); if (Array.isArray(a)) a.forEach((id) => syncedIds.add(id)) } catch { /* ignore */ }
+}
+let syncSaveTimer = null
+function saveSynced() {
+  clearTimeout(syncSaveTimer)
+  syncSaveTimer = setTimeout(() => { try { localStorage.setItem(SYNC_KEY, JSON.stringify([...syncedIds])) } catch { /* ignore */ } }, 300)
+}
+function markSynced(id) { if (!syncedIds.has(id)) { syncedIds.add(id); saveSynced() } }
 
+function defaults() {
+  return {
+    title: 'Ny uppgift', description: '', approach: '', category: 'dev', sub: '',
+    status: 'todo', difficulty: DEFAULT_DIFFICULTY, order: nextOrder(),
+    x: null, y: null, deps: [], createdBy: null, updatedBy: identity.name || 'någon',
+  }
+}
 function nextOrder() {
   let max = 0
-  yTasks.forEach((m) => {
-    const o = m.get('order') || 0
-    if (o > max) max = o
-  })
+  tasks.forEach((t) => { if ((t.order || 0) > max) max = t.order || 0 })
   return max + 1
 }
 
-const TASK_DEFAULTS = () => ({
-  title: 'Ny uppgift',
-  description: '',
-  approach: '',
-  category: 'dev',
-  sub: '',
-  status: 'todo',
-  difficulty: DEFAULT_DIFFICULTY,
-  order: nextOrder(),
-  x: null,
-  y: null,
-  deps: [],
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-  updatedBy: identity.name || 'någon',
-})
+// --------------------------------------------------------------------------- dirty tracking
+function markDirty(id, fields, t) {
+  let d = dirty.get(id)
+  if (!d) { d = new Map(); dirty.set(id, d) }
+  const now = Date.now()
+  fields.forEach((f) => d.set(f, { val: f === 'deps' ? [...(t.deps || [])] : t[f], ts: now }))
+}
+
+// --------------------------------------------------------------------------- DB writes
+// Kolumn-scopad skrivning: rör bara de fält som ändrats (krockar inte med andras fält).
+function writeCols(id, fields) {
+  if (!dbMode || !fields.length) return Promise.resolve()
+  const t = tasks.get(id); if (!t) return Promise.resolve()
+  const row = { ...rowSubset(t, fields), updated_by: identity.name || 'någon', updated_at: new Date().toISOString() }
+  sessionIds.add(id)
+  return supabase.from('board_tasks').update(row).eq('id', id)
+    .then(({ error }) => { if (error) { console.warn('update', error.message); return false } markSynced(id); return true })
+}
+// Hela raden: bara vid skapande och vid "synka upp" av ett kort som DB:n inte känner till.
+// Resolvar till true/false (lyckades raden faktiskt skrivas?) så att FK-beroende activity-insert
+// kan vänta in att raden VERKLIGEN finns, inte bara att anropet återvänt.
+function writeRowFull(id) {
+  if (!dbMode) return Promise.resolve(false)
+  const t = tasks.get(id); if (!t) return Promise.resolve(false)
+  const row = { ...taskToRow(t), updated_by: identity.name || 'någon', updated_at: new Date().toISOString() }
+  sessionIds.add(id)
+  return supabase.from('board_tasks').upsert(row)
+    .then(({ error }) => { if (error) { console.warn('upsert', error.message); return false } markSynced(id); return true })
+}
+
+const textWriteTimers = new Map() // id -> {timer, fields:Set} (debounce fritext-skrivning)
+function scheduleTextWrite(id, fields) {
+  let e = textWriteTimers.get(id)
+  if (!e) { e = { fields: new Set(), timer: null }; textWriteTimers.set(id, e) }
+  fields.forEach((f) => e.fields.add(f))
+  clearTimeout(e.timer)
+  e.timer = setTimeout(() => { const fs = [...e.fields]; textWriteTimers.delete(id); writeCols(id, fs) }, 500)
+}
+
+// --------------------------------------------------------------------------- task helpers (public API)
+export function allTasks() { return [...tasks.values()] }
 
 export function createTask(fields = {}, id = null) {
-  const tid = id || 't_' + Math.random().toString(36).slice(2, 9)
-  ydoc.transact(() => {
-    const m = new Y.Map()
-    Object.entries({ ...TASK_DEFAULTS(), ...fields }).forEach(([k, v]) => m.set(k, v))
-    yTasks.set(tid, m)
-  })
+  const tid = id || 't_' + rnd()
+  const now = Date.now()
+  const t = {
+    ...defaults(), ...fields, id: tid,
+    createdBy: { id: identity.id, name: identity.name || 'Gäst', color: identity.color },
+    updatedBy: identity.name || 'någon', createdAt: now, updatedAt: now,
+  }
+  tasks.set(tid, t); pushTasks(); saveCache(); sessionIds.add(tid)
+  if (dbMode) {
+    const p = writeRowFull(tid)
+    createPromises.set(tid, p)
+    p.finally(() => createPromises.delete(tid))
+  }
+  logActivity(tid, 'created', 'skapade kortet') // insert gate:as internt tills task-raden finns (FK)
   return tid
 }
 
 export function updateTask(id, patch) {
-  const m = yTasks.get(id)
-  if (!m) return
-  ydoc.transact(() => {
-    Object.entries(patch).forEach(([k, v]) => m.set(k, v))
-    m.set('updatedAt', Date.now())
-    m.set('updatedBy', identity.name || 'någon')
-  })
+  const cur = tasks.get(id)
+  if (!cur) return
+  const next = { ...cur, ...patch, updatedAt: Date.now(), updatedBy: identity.name || 'någon' }
+  tasks.set(id, next); pushTasks(); saveCache()
+
+  // historik: diskreta ändringar loggas direkt, fritext debouncas (annars en rad per tangenttryck)
+  const discrete = describeDiscrete(patch)
+  if (discrete.length) logActivity(id, 'update', cap(discrete.join(', ')))
+  const textActKeys = Object.keys(patch).filter((k) => k in TEXT_FIELDS)
+  if (textActKeys.length) scheduleTextActivity(id, textActKeys)
+
+  if (!dbMode) return
+  // Markera ändrade fält dirty direkt (skyddar mot att ett eko backar dem), skriv sen.
+  const changed = Object.keys(patch).filter((k) => MAPPABLE.has(k))
+  if (!changed.length) return
+  markDirty(id, changed, next)
+  const textChanged = changed.filter((k) => k in TEXT_FIELDS)
+  const otherChanged = changed.filter((k) => !(k in TEXT_FIELDS))
+  if (otherChanged.length) writeCols(id, otherChanged)     // diskret/positionsändring: skriv nu
+  if (textChanged.length) scheduleTextWrite(id, textChanged) // fritext: debounce
 }
 
 export function deleteTask(id) {
-  ydoc.transact(() => {
-    yTasks.forEach((m) => {
-      const deps = m.get('deps') || []
-      if (deps.includes(id)) m.set('deps', deps.filter((d) => d !== id))
+  clearTaskTimers(id)
+  const dependents = []
+  tasks.forEach((t) => {
+    const deps = t.deps || []
+    if (deps.includes(id)) { t.deps = deps.filter((d) => d !== id); dependents.push(t.id) }
+  })
+  tasks.delete(id); dirty.delete(id); pushTasks(); saveCache()
+  if (dbMode) {
+    supabase.from('board_tasks').delete().eq('id', id).then(({ error }) => { if (error) console.warn('delete', error.message) })
+    // markera deps dirty på beroende-korten så ett stalet eko inte tillfälligt ritar tillbaka den döda pilen
+    dependents.forEach((did) => { markDirty(did, ['deps'], tasks.get(did)); writeCols(did, ['deps']) })
+  }
+  // board_activity för kortet städas bort via ON DELETE CASCADE i DB:n.
+}
+
+function clearTaskTimers(id) {
+  const w = textWriteTimers.get(id); if (w) { clearTimeout(w.timer); textWriteTimers.delete(id) }
+  const a = textActTimers.get(id); if (a) { clearTimeout(a.timer); textActTimers.delete(id) }
+}
+
+// --------------------------------------------------------------------------- remote apply (merge)
+function applyRemoteRow(r) {
+  markSynced(r.id)
+  sessionIds.add(r.id) // sett via realtime denna session -> reconcile får aldrig reapa det (boot-fönster-insert)
+  const incoming = rowToTask(r)
+  const d = dirty.get(r.id)
+  if (d && d.size) {
+    const local = tasks.get(r.id) || {}
+    const now = Date.now()
+    d.forEach((rec, field) => {
+      if (now - rec.ts > DIRTY_TTL) { d.delete(field); return }      // gett upp att vänta -> ta emot fjärr
+      if (eq(incoming[field], rec.val)) { d.delete(field); return }  // bekräftat (== vårt) -> ta emot fjärr
+      incoming[field] = (local[field] !== undefined ? local[field] : rec.val) // behåll vår osparade ändring
     })
-    yTasks.delete(id)
+    if (d.size === 0) dirty.delete(r.id)
+  }
+  tasks.set(r.id, incoming); pushTasks(); saveCache()
+}
+function applyRemoteDelete(id) {
+  clearTaskTimers(id)
+  realtimeDeleted.add(id) // så initialladdningens select inte återuppväcker ett kort som just raderats
+  let changed = tasks.delete(id)
+  dirty.delete(id)
+  // självläk: ta bort det döda id:t ur alla kvarvarande beroenden (annars dinglande pilar)
+  tasks.forEach((t) => { if ((t.deps || []).includes(id)) { t.deps = t.deps.filter((x) => x !== id); changed = true } })
+  if (changed) { pushTasks(); saveCache() }
+}
+
+// --------------------------------------------------------------------------- activity (edit history)
+const actByTask = new Map() // taskId -> rader, nyast först
+const actSeen = new Set()   // cid:n vi redan har (dedup mellan optimistisk lokal rad och DB-eko)
+const actListeners = new Map() // taskId -> Set(cb)
+
+export function getActivity(taskId) { return actByTask.get(taskId) || [] }
+export function onActivity(taskId, cb) {
+  let s = actListeners.get(taskId)
+  if (!s) { s = new Set(); actListeners.set(taskId, s) }
+  s.add(cb)
+  return () => { s.delete(cb); if (s.size === 0) actListeners.delete(taskId) }
+}
+function emitActivity(taskId) { const s = actListeners.get(taskId); if (s) s.forEach((cb) => cb(getActivity(taskId))) }
+
+function pushActivityLocal(row) {
+  if (row.cid && actSeen.has(row.cid)) return // redan sedd (vårt eget eko)
+  if (row.cid) actSeen.add(row.cid)
+  const arr = actByTask.get(row.task_id) || []
+  arr.push(row)
+  arr.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)) // nyast först (parsad tid: 'Z' och '+00:00' likvärdiga)
+  if (arr.length > ACT_CAP) arr.length = ACT_CAP
+  actByTask.set(row.task_id, arr)
+  saveActivityCache()
+  emitActivity(row.task_id)
+}
+function saveActivityCache() {
+  try {
+    const flat = []
+    actByTask.forEach((arr) => arr.forEach((r) => flat.push(r)))
+    localStorage.setItem(ACT_KEY, JSON.stringify(flat.slice(0, 600)))
+  } catch { /* ignore */ }
+}
+function loadActivityCache() {
+  try {
+    const flat = JSON.parse(localStorage.getItem(ACT_KEY) || '[]')
+    if (Array.isArray(flat)) flat.forEach((r) => r && r.task_id && pushActivityLocal(r))
+  } catch { /* ignore */ }
+}
+
+function logActivity(taskId, kind, summary) {
+  const row = {
+    cid: uuid(), task_id: taskId, at: new Date().toISOString(),
+    actor_id: identity.id, actor_name: identity.name || 'någon', actor_color: identity.color,
+    kind, summary,
+  }
+  pushActivityLocal(row) // optimistiskt: syns direkt i öppen editor
+  if (!dbMode) return
+  const insert = () => supabase.from('board_activity').insert(row).then(({ error }) => { if (error) console.warn('activity', error.message) })
+  const gate = createPromises.get(taskId) // vänta in att task-raden VERKLIGEN skrevs (gate resolvar till ok)
+  if (gate) gate.then((ok) => { if (ok !== false) insert() }); else insert() // misslyckad create -> hoppa över (annars FK-krock)
+}
+
+/** Hämta historik för ett kort från DB:n (merge in i lokala cachen, dedupas på cid). */
+export async function fetchActivity(taskId) {
+  if (dbMode) {
+    const { data, error } = await supabase.from('board_activity')
+      .select('cid,task_id,at,actor_id,actor_name,actor_color,kind,summary')
+      .eq('task_id', taskId).order('at', { ascending: false }).limit(ACT_CAP)
+    if (!error && data) data.forEach((r) => pushActivityLocal(r))
+  }
+  return getActivity(taskId)
+}
+
+// Människoläsbara historik-sammanfattningar (svenska, inget AI-tankestreck som separator).
+const TEXT_FIELDS = { title: 'titeln', description: 'beskrivningen', approach: 'lösningsidén' }
+function describeDiscrete(patch) {
+  const parts = []
+  if ('status' in patch) parts.push(`flyttade till "${(STATUS[patch.status] || {}).label || patch.status}"`)
+  if ('difficulty' in patch) parts.push(`satte svårighet "${(DIFF[patch.difficulty] || {}).short || patch.difficulty}"`)
+  if ('category' in patch) parts.push(`bytte kategori till "${(CAT[patch.category] || {}).label || patch.category}"`)
+  if ('sub' in patch && !('category' in patch) && patch.sub) parts.push(`satte underkategori "${patch.sub}"`)
+  if ('deps' in patch) parts.push('ändrade beroenden')
+  return parts
+}
+const textActTimers = new Map() // taskId -> {timer, fields:Set} (debounce fritext-historik)
+function scheduleTextActivity(id, fields) {
+  let e = textActTimers.get(id)
+  if (!e) { e = { fields: new Set(), timer: null }; textActTimers.set(id, e) }
+  fields.forEach((f) => e.fields.add(f))
+  clearTimeout(e.timer)
+  e.timer = setTimeout(() => {
+    const names = [...e.fields].map((f) => TEXT_FIELDS[f])
+    textActTimers.delete(id)
+    logActivity(id, 'edit', cap('redigerade ' + humanList(names)))
+  }, 3500)
+}
+function humanList(xs) {
+  if (xs.length <= 1) return xs[0] || ''
+  return xs.slice(0, -1).join(', ') + ' och ' + xs[xs.length - 1]
+}
+function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s }
+
+// --------------------------------------------------------------------------- presence (online / editing / typing)
+let presenceChannel = null
+let myEditing = null
+let myTyping = false
+let typingTimer = null
+const cursorMap = {} // clientId -> {clientId, user, cursor, typing}
+
+function localPresence() {
+  return { user: { id: identity.id, name: identity.name || 'Gäst', color: identity.color }, editing: myEditing, typing: myTyping }
+}
+const channelJoined = () => presenceChannel && presenceChannel.state === 'joined'
+function trackPresence() { if (channelJoined()) presenceChannel.track(localPresence()).catch(() => {}) }
+
+export function setEditing(taskId) { myEditing = taskId || null; trackPresence() }
+export function pingTyping() {
+  myTyping = true; trackPresence()
+  clearTimeout(typingTimer)
+  typingTimer = setTimeout(() => { myTyping = false; trackPresence() }, 1500)
+}
+
+let lastCursorTs = 0
+export function setCursor(view, x, y) {
+  const now = perfNow()
+  if (now - lastCursorTs < 40) return // strypning ~25 fps
+  lastCursorTs = now
+  if (!channelJoined()) return // skicka inte innan kanalen är ansluten (undviker REST-fallback)
+  presenceChannel.send({
+    type: 'broadcast', event: 'cursor',
+    payload: { clientId: identity.id, user: localPresence().user, cursor: { view, x, y, t: Date.now() }, typing: myTyping },
   })
 }
+export function clearCursor() {
+  if (!channelJoined()) return
+  presenceChannel.send({ type: 'broadcast', event: 'cursor', payload: { clientId: identity.id, user: localPresence().user, cursor: null } })
+}
 
-/** Seed once, with STABLE ids so two peers seeding concurrently converge (no duplicates). */
-export function seedIfEmpty(seedTasks) {
-  if (yMeta.get('seeded') || yTasks.size > 0) return false
-  ydoc.transact(() => {
-    seedTasks.forEach((t, i) => {
-      const m = new Y.Map()
-      Object.entries({ ...TASK_DEFAULTS(), order: i + 1, ...t }).forEach(([k, v]) => m.set(k, v))
-      yTasks.set(t.id, m)
-    })
-    yMeta.set('seeded', true)
-    yMeta.set('schema', 1)
+function recomputePeople() {
+  if (!presenceChannel) return
+  const state = presenceChannel.presenceState()
+  const out = []
+  Object.entries(state).forEach(([key, metas]) => {
+    if (key === identity.id) return
+    const m = (metas && metas[0]) || {}
+    if (m.user) out.push({ clientId: key, user: m.user, editing: m.editing || null, typing: !!m.typing })
   })
-  return true
+  peopleStore.set(out)
+  setConn({ peers: out.length, online: out.length > 0 })
 }
-
-// --------------------------------------------------------------------------- external stores (for React)
-// keyOf (optional): if the derived key is unchanged, keep the previous snapshot ref and DON'T
-// notify — this stops high-frequency cursor ticks from re-rendering people/avatar consumers.
-function makeStore(getValue, subscribeRaw, keyOf) {
-  const listeners = new Set()
-  let snapshot = getValue()
-  let key = keyOf ? keyOf(snapshot) : null
-  const recompute = () => {
-    const next = getValue()
-    if (keyOf) {
-      const nk = keyOf(next)
-      if (nk === key) return
-      key = nk
-    }
-    snapshot = next
-    listeners.forEach((l) => l())
-  }
-  subscribeRaw(recompute)
-  return {
-    subscribe(cb) {
-      listeners.add(cb)
-      return () => listeners.delete(cb)
-    },
-    get: () => snapshot,
-  }
+function ingestCursor(p) {
+  if (!p || p.clientId === identity.id) return
+  cursorMap[p.clientId] = p
+  cursorsStore.set(Object.values(cursorMap))
 }
-
-export const tasksStore = makeStore(allTasks, (cb) => yTasks.observeDeep(cb))
-
-// people = avatars + editing/typing flags. Low-frequency: keyed so cursor moves don't churn it.
-export const peopleStore = makeStore(
-  () => {
-    const out = []
-    awareness.getStates().forEach((st, clientId) => {
-      if (clientId !== awareness.clientID && st.user)
-        out.push({ clientId, user: st.user, editing: st.editing || null, typing: !!st.typing })
-    })
-    return out
-  },
-  (cb) => awareness.on('change', cb),
-  (arr) => arr.map((p) => `${p.clientId}:${p.user.name}:${p.user.color}:${p.editing}:${p.typing}`).sort().join('|'),
-)
-
-// cursors = high-frequency stream, consumed only by the lightweight cursor overlay.
-export const cursorsStore = makeStore(
-  () => {
-    const out = []
-    awareness.getStates().forEach((st, clientId) => {
-      if (clientId !== awareness.clientID && st.user && st.cursor)
-        out.push({ clientId, user: st.user, cursor: st.cursor, typing: !!st.typing })
-    })
-    return out
-  },
-  (cb) => awareness.on('change', cb),
-)
 
 // --------------------------------------------------------------------------- connection state
-let connEmit = () => {}
 const connState = { peers: 0, online: false, synced: false }
+function setConn(patch) { Object.assign(connState, patch); connStore.set({ ...connState }) }
 
-export const connStore = makeStore(
-  () => ({ peers: connState.peers, online: connState.online, synced: connState.synced }),
-  (cb) => { connEmit = cb },
-)
-
-function updateConn() {
-  connState.peers = Object.keys(room.getPeers()).length
-  connState.online = connState.peers > 0
-  if (connState.peers > 0) connState.synced = true
-  connEmit()
+// --------------------------------------------------------------------------- realtime subscriptions
+function startData() {
+  supabase.channel('board-data:' + BOARD_ID)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'board_tasks' }, (payload) => {
+      if (payload.eventType === 'DELETE') { const id = payload.old?.id; if (id) applyRemoteDelete(id); return }
+      if (payload.new) applyRemoteRow(payload.new) // mergas fält för fält mot ev. lokala dirty-fält
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'board_activity' }, (payload) => {
+      if (payload.new) pushActivityLocal(payload.new)
+    })
+    .subscribe()
+}
+function startPresence() {
+  presenceChannel = supabase.channel('board-presence:' + BOARD_ID, {
+    config: { presence: { key: identity.id }, broadcast: { self: false } },
+  })
+  presenceChannel.on('presence', { event: 'sync' }, recomputePeople)
+  presenceChannel.on('presence', { event: 'join' }, recomputePeople)
+  presenceChannel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
+    recomputePeople();
+    (leftPresences || []).forEach((p) => { const k = p.user?.id; if (k) delete cursorMap[k] })
+    cursorsStore.set(Object.values(cursorMap))
+  })
+  presenceChannel.on('broadcast', { event: 'cursor' }, ({ payload }) => ingestCursor(payload))
+  presenceChannel.subscribe((status) => { if (status === 'SUBSCRIBED') trackPresence() })
 }
 
-room.onPeerJoin = (peerId) => {
-  // hand the newcomer our full document + awareness so they catch up immediately
-  docAction.send(Y.encodeStateAsUpdate(ydoc), { target: peerId }).catch(() => {})
-  if (awareness.getLocalState()) {
-    awrAction.send(encodeAwarenessUpdate(awareness, [awareness.clientID]), { target: peerId }).catch(() => {})
-  }
-  updateConn()
+// släpp presence rent när fliken stängs
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => { try { presenceChannel && presenceChannel.untrack() } catch { /* ignore */ } })
 }
-room.onPeerLeave = () => updateConn()
+
+// --------------------------------------------------------------------------- bootstrap
+let readyResolve
+const ready = new Promise((r) => { readyResolve = r })
+
+async function init() {
+  // 1) Måla direkt från lokal cache (känns snabbt, funkar offline).
+  loadSynced(); loadCache(); loadActivityCache(); pushTasks()
+
+  // 2) Ingen Supabase konfigurerad -> rent lokalt läge.
+  if (!supabaseEnabled) { setConn({ synced: false }); readyResolve(); return }
+
+  // 3) Finns tabellerna? En billig probe avgör DB-läge vs lokalt läge.
+  let probeErr = null
+  try { const { error } = await supabase.from('board_tasks').select('id').limit(1); probeErr = error } catch (e) { probeErr = e }
+  dbMode = !probeErr
+
+  // Presence funkar via realtime-kanaler även om tabellerna saknas -> starta alltid.
+  startPresence()
+
+  if (!dbMode) { setConn({ synced: false }); readyResolve(); return }
+
+  // 4) DB-läge: prenumerera FÖRST (så inserts under boot fångas), ladda sen hela tavlan.
+  startData()
+  try {
+    const { data } = await supabase.from('board_tasks').select('*')
+    const dbIds = new Set((data || []).map((r) => r.id))
+    // hoppa över rader som redan raderats via realtime under boot (annars återuppväcker snapshoten dem)
+    ;(data || []).forEach((r) => { if (!realtimeDeleted.has(r.id)) applyRemoteRow(r) })
+    // Reconcilea cachade kort som INTE finns i DB:n:
+    ;[...tasks.keys()].forEach((id) => {
+      if (dbIds.has(id)) return
+      if (syncedIds.has(id) && !sessionIds.has(id)) {
+        // tidigare synkat men borta nu = raderat på annan enhet medan vi var borta -> ta bort
+        tasks.delete(id); syncedIds.delete(id)
+      } else {
+        // aldrig synkat (skapat i lokalt läge / under boot) -> synka UPP, radera inte
+        writeRowFull(id)
+      }
+    })
+    saveSynced(); pushTasks(); saveCache()
+  } catch (e) { console.warn('initial load', e.message) }
+
+  setConn({ synced: true })
+  readyResolve()
+}
+;(async () => { try { await init() } catch (e) { console.warn('board init', e?.message); readyResolve() } })()
 
 // --------------------------------------------------------------------------- safe first-run seeding
 /**
- * Seed on first run WITHOUT resurrecting deleted tasks: never seed while data/seeded-flag exists,
- * and wait for peer sync before deciding. New room → seed; peers exist → lowest-clientId elects.
- * Stable ids make any residual race converge without loss.
+ * Seeda startinnehållet en gång, utan att återuppliva raderade kort:
+ *   - lokalt läge: seeda bara om cachen är tom (in-memory-guard hindrar dubbelseed per session;
+ *     ingen persistent flagga sätts, så DB:n kan fortfarande seedas när den blir tillgänglig).
+ *   - DB-läge: DB-flaggan "seeded" finns -> gör inget; tom tabell -> seeda (upsert på stabila id:n,
+ *     så två samtidiga seedare konvergerar); redan innehåll -> sätt bara flaggan.
  */
 let seedAttempted = false
-export function maybeSeed(seedTasks) {
-  if (seedAttempted) return // guard StrictMode's double-invoke
+export function maybeSeed(seedTasks) { ready.then(() => doSeed(seedTasks)) }
+
+async function doSeed(seedTasks) {
+  if (seedAttempted) return
   seedAttempted = true
-  const FLAG = 'lm.seeded.' + ROOM
-  const remember = () => { try { localStorage.setItem(FLAG, '1') } catch { /* ignore */ } }
-  const hasData = () => yTasks.size > 0 || !!yMeta.get('seeded')
-  if (localStorage.getItem(FLAG) || hasData()) { remember(); return }
 
-  let settled = false
-  const finish = (doSeed) => {
-    if (settled) return
-    settled = true
-    cleanup()
-    if (!hasData() && doSeed) seedIfEmpty(seedTasks)
-    remember()
+  if (!dbMode) {
+    if (tasks.size === 0) {
+      seedTasks.forEach((t, i) => {
+        const now = Date.now()
+        tasks.set(t.id, { ...defaults(), order: i + 1, ...t, id: t.id, createdBy: null, createdAt: now, updatedAt: now })
+      })
+      pushTasks(); saveCache()
+    }
+    return
   }
-  const decide = () => {
-    if (hasData()) return finish(false)
-    if (connState.peers === 0) return finish(true) // truly alone → we must seed
-    const ids = [awareness.clientID, ...awareness.getStates().keys()]
-    finish(awareness.clientID === Math.min(...ids)) // elected (lowest id) seeds
-  }
-  const onData = () => { if (hasData()) finish(false) }
-  const unsub = connStore.subscribe(() => { if (connState.peers > 0) setTimeout(decide, 1500) })
-  yTasks.observeDeep(onData)
-  yMeta.observe(onData)
-  const timer = setTimeout(decide, 6000) // fallback if no peer ever connects
-  function cleanup() {
-    yTasks.unobserveDeep(onData)
-    yMeta.unobserve(onData)
-    unsub()
-    clearTimeout(timer)
-  }
-}
 
-// Dev only: tear down singletons on hot-reload so we don't leak relay sockets / duplicate peers.
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    try { room.leave() } catch { /* ignore */ }
-    try { persistence.destroy() } catch { /* ignore */ }
-  })
+  try {
+    const { data: meta } = await supabase.from('board_meta').select('value').eq('key', 'seeded').maybeSingle()
+    if (meta && meta.value) return
+
+    const { count } = await supabase.from('board_tasks').select('id', { count: 'exact', head: true })
+    if ((count || 0) > 0) { // redan innehåll men ingen flagga -> sätt flagga, seeda ej
+      await supabase.from('board_meta').upsert({ key: 'seeded', value: true })
+      return
+    }
+
+    const rows = seedTasks.map((t, i) => taskToRow({ ...defaults(), order: i + 1, ...t, id: t.id, createdBy: null }))
+    await supabase.from('board_tasks').upsert(rows)
+    await supabase.from('board_meta').upsert({ key: 'seeded', value: true })
+    rows.forEach((r) => { tasks.set(r.id, rowToTask(r)); markSynced(r.id) })
+    pushTasks(); saveCache()
+  } catch (e) { console.warn('seed', e.message) }
 }

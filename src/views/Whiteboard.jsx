@@ -9,6 +9,7 @@ import { T, CATEGORIES, CAT, STATUS, DIFFICULTIES } from '../theme'
 import { updateTask, createTask, setCursor, clearCursor } from '../collab'
 import { useCursors } from '../store'
 import { fraction, computeProgress, diffOf } from '../util'
+import { Avatar } from '../components/Avatar.jsx'
 
 const CURSOR_TTL = 6000 // dölj en peers muspekare om den inte rört sig på så här många ms
 const NEXT_STATUS = { todo: 'doing', doing: 'done', done: 'todo' } // klicka statusprick för att stega
@@ -26,9 +27,13 @@ const H_TARGET = { left: '50%', top: 0, transform: 'translate(-50%,-50%)', width
 const H_SOURCE = { left: '50%', top: '100%', transform: 'translate(-50%,-50%)', width: 1, height: 1, opacity: 0, border: 'none', background: 'transparent', pointerEvents: 'none' }
 
 function buildNodes(allTasks, visibleTasks, lanes, onAddCard) {
-  // synliga uppgifter grupperade per kategori, i ordningsföljd
+  // synliga uppgifter grupperade per kategori, i ordningsföljd. Deterministisk tiebreaker
+  // (createdAt, sedan id) så att två kort skapade samtidigt med samma order hamnar lika hos alla.
   const byCat = {}
-  visibleTasks.slice().sort((a, b) => (a.order || 0) - (b.order || 0))
+  visibleTasks.slice().sort((a, b) =>
+    (a.order || 0) - (b.order || 0)
+    || (a.createdAt || 0) - (b.createdAt || 0)
+    || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .forEach((t) => { (byCat[t.category] ||= []).push(t) })
   // framsteg per kategori (över ALLA uppgifter, inte bara synliga) → visas i rubriken
   const catProg = {}
@@ -139,13 +144,20 @@ function TaskNode({ data }) {
   const d = diffOf(t)
   const done = t.status === 'done'
   return (
-    <div style={{
-      width: CARD_W, borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
-      background: done ? T.doneSoft : T.panel,
-      border: `1.5px solid ${done ? T.done + '88' : T.line}`,
-      boxShadow: T.shadowSoft, opacity: done ? 0.62 : 1,
-      display: 'flex',
-    }}>
+    <div style={{ position: 'relative', width: CARD_W }}>
+      {/* skaparens lilla avatar i hörnet (hovra för namn); ligger utanför kortets overflow:hidden */}
+      {t.createdBy && (
+        <div title={`${t.createdBy.name} skapade kortet`} style={{ position: 'absolute', top: -7, left: -7, zIndex: 3 }}>
+          <Avatar name={t.createdBy.name} color={t.createdBy.color} size={18} style={{ boxShadow: T.shadowSoft }} />
+        </div>
+      )}
+      <div style={{
+        width: CARD_W, borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
+        background: done ? T.doneSoft : T.panel,
+        border: `1.5px solid ${done ? T.done + '88' : T.line}`,
+        boxShadow: T.shadowSoft, opacity: done ? 0.62 : 1,
+        display: 'flex',
+      }}>
       <Handle id="t" type="target" position={Position.Top} style={H_TARGET} />
       <Handle id="s" type="source" position={Position.Bottom} style={H_SOURCE} />
       {/* svårighetsgrad = färgad kantremsa till vänster (det nya färgspråket) */}
@@ -160,7 +172,7 @@ function TaskNode({ data }) {
           <button
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); updateTask(t.id, { status: NEXT_STATUS[t.status] || 'doing' }) }}
-            title={`Status: ${s.label} — klicka för att ändra`}
+            title={`Status: ${s.label} · klicka för att ändra`}
             className="nodrag"
             style={{ border: 'none', background: 'transparent', padding: 0, width: 16, height: 16, display: 'grid', placeItems: 'center' }}
           >
@@ -180,6 +192,7 @@ function TaskNode({ data }) {
             <div style={{ height: '100%', width: `${Math.round(fraction(t) * 100)}%`, background: done ? T.done : s.color }} />
           </div>
         </div>
+      </div>
       </div>
     </div>
   )
@@ -257,12 +270,16 @@ function CursorsLayer() {
 }
 
 /* ───────────────────────────── flow ───────────────────────────── */
-function Flow({ tasks, visibleTasks, cats, onOpenTask }) {
+function Flow({ tasks, visibleTasks, cats, onOpenTask, paused }) {
   const rf = useReactFlow()
   const [nodes, setNodes] = useNodesState([])
   const [hoveredId, setHoveredId] = useState(null) // kortet musen är över → lyser upp dess kopplingar
   const edges = useMemo(() => buildEdges(visibleTasks, hoveredId), [visibleTasks, hoveredId])
   const draggingRef = useRef(false)
+  // paused = editorn ligger öppen ovanpå (dimmad overlay). Då slipper vi bygga om ALLA noder vid
+  // varje tangenttryck i fritextfälten; tavlan ritas om när editorn stängs.
+  const pausedRef = useRef(paused)
+  pausedRef.current = paused
 
   // synliga kolumner = de team-kategorier som är påslagna i toppfiltret
   const lanes = useMemo(() => CATEGORIES.filter((c) => !cats || cats[c.key]), [cats])
@@ -282,11 +299,17 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask }) {
   visRef.current = visibleTasks
   lanesRef.current = lanes
 
-  // bygg om noderna från store, men klottra aldrig över ett pågående drag
+  // bygg om noderna från store, men klottra aldrig över ett pågående drag eller medan editorn är öppen
   useEffect(() => {
-    if (draggingRef.current) return
+    if (draggingRef.current || pausedRef.current) return
     setNodes(buildNodes(tasks, visibleTasks, lanes, onAddCard))
   }, [tasks, visibleTasks, lanes, onAddCard, setNodes])
+
+  // när editorn stängs (paused -> false): bygg om en gång med det senaste storeläget
+  useEffect(() => {
+    if (paused || draggingRef.current) return
+    setNodes(buildNodes(tasksRef.current, visRef.current, lanesRef.current, onAddCard))
+  }, [paused, onAddCard, setNodes])
 
   // rensa vår muspekare när tavlan avmonteras (t.ex. byte till Timeline/Progress)
   useEffect(() => () => clearCursor(), [])
