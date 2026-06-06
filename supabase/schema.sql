@@ -10,11 +10,11 @@
 -- Plus Row Level Security (RLS) och Realtime så att en ändring direkt syns hos alla.
 --
 -- SÄKERHETSMODELL: LÄSNING är öppen (vem som helst kan se tavlan/changelog/data), men ÄNDRINGAR
--- (skapa/flytta/redigera/radera kort) kräver att man är INLOGGAD (to authenticated). Tavlan har en
--- Supabase-inloggning (email+lösen); utomstående utan konto kan alltså titta men inte kladda.
--- OBS: Supabase tillåter öppen registrering, så "authenticated" = vem som helst som skapat ett konto.
--- Vill ni låsa till ENBART era tre mejl: lägg till ett villkor i write-policyerna, t.ex.
---   with check (auth.jwt()->>'email' in ('a@x.se','b@x.se','c@x.se'))  (säg till så fixar jag det).
+-- (skapa/flytta/redigera/radera kort) kräver inloggning OCH att mejladressen finns på teamets
+-- tillåtna lista (se is_board_editor() nedan). Även om en utomstående registrerar ett konto kan
+-- den alltså inte redigera: bara teamets tre mejl släpps igenom av write-policyerna. Tavlan har en
+-- Supabase-inloggning (email+lösen). Vill ni lägga till/ta bort en redigerare: ändra listan i
+-- funktionen is_board_editor() och kör om den här filen (idempotent).
 
 -- ── tasks ──────────────────────────────────────────────────────────────────
 create table if not exists public.board_tasks (
@@ -61,10 +61,21 @@ create table if not exists public.board_meta (
 );
 
 -- ── Row Level Security ──────────────────────────────────────────────────────
--- Slå på RLS. LÄS: anon + authenticated. SKRIV: bara authenticated (inloggade). Se säkerhetsnoten ovan.
+-- Slå på RLS. LÄS: anon + authenticated. SKRIV: bara teamets tillåtna mejl (is_board_editor).
 alter table public.board_tasks    enable row level security;
 alter table public.board_activity enable row level security;
 alter table public.board_meta     enable row level security;
+
+-- Vem får redigera: teamets mejladresser. Ändra listan här för att lägga till/ta bort en redigerare.
+-- (auth.jwt()->>'email' = den inloggades mejl; tom sträng för anon/utloggad -> nekas.)
+create or replace function public.is_board_editor()
+returns boolean language sql stable as $$
+  select coalesce(auth.jwt() ->> 'email', '') in (
+    't@langstrom.se',
+    'dv23tlm@cs.umu.se',
+    'hampuswidebo04@gmail.com'
+  )
+$$;
 
 -- Idempotent: släpp ev. gamla/öppna policys och (åter)skapa de uppdelade läs/skriv-policyerna.
 drop policy if exists board_tasks_all      on public.board_tasks;
@@ -77,17 +88,17 @@ drop policy if exists board_meta_all   on public.board_meta;
 drop policy if exists board_meta_read  on public.board_meta;
 drop policy if exists board_meta_write on public.board_meta;
 
--- board_tasks: alla får läsa, bara inloggade får skapa/ändra/radera.
+-- board_tasks: alla får läsa, bara teamets mejl får skapa/ändra/radera.
 create policy board_tasks_read  on public.board_tasks for select to anon, authenticated using (true);
-create policy board_tasks_write on public.board_tasks for all    to authenticated using (true) with check (true);
+create policy board_tasks_write on public.board_tasks for all    to authenticated using (public.is_board_editor()) with check (public.is_board_editor());
 
--- board_activity: alla får läsa historiken, bara inloggade får skriva nya rader.
+-- board_activity: alla får läsa historiken, bara teamets mejl får skriva nya rader.
 create policy board_activity_read   on public.board_activity for select to anon, authenticated using (true);
-create policy board_activity_insert on public.board_activity for insert to authenticated with check (true);
+create policy board_activity_insert on public.board_activity for insert to authenticated with check (public.is_board_editor());
 
--- board_meta: alla får läsa, bara inloggade får skriva (seed-flaggan m.m.).
+-- board_meta: alla får läsa, bara teamets mejl får skriva (seed-flaggan m.m.).
 create policy board_meta_read  on public.board_meta for select to anon, authenticated using (true);
-create policy board_meta_write on public.board_meta for all    to authenticated using (true) with check (true);
+create policy board_meta_write on public.board_meta for all    to authenticated using (public.is_board_editor()) with check (public.is_board_editor());
 
 -- ── Realtime ────────────────────────────────────────────────────────────────
 -- Lägg tabellerna i Supabase Realtime-publikationen så postgres_changes broadcastar
