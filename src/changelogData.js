@@ -1,5 +1,5 @@
 /**
- * Innehåll till Changelog-vyn — systembeskrivning, arkitektur-karta och kronologisk changelog.
+ * Innehåll till Changelog-vyn: systembeskrivning, arkitektur-karta och kronologisk changelog.
  * Författat mot projektets faktiska historik (git-logg + HANDOFF_STATUS + README), inte påhittat.
  * Statiskt så vyn fungerar utan backend och är lika för hela teamet.
  */

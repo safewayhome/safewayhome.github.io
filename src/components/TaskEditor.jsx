@@ -99,7 +99,7 @@ export default function TaskEditor({ task, allTasks, onClose }) {
             </div>
           </div>
 
-          {/* svårighetsgrad — fyra fasta, färgkodade nivåer */}
+          {/* svårighetsgrad: fyra fasta, färgkodade nivåer */}
           <Label>Svårighetsgrad</Label>
           <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
             {DIFFICULTIES.map((d) => {

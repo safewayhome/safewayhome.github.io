@@ -14,7 +14,7 @@ import Data from './views/Data.jsx'
 import TaskEditor from './components/TaskEditor.jsx'
 import { Avatar, initials } from './components/Avatar.jsx'
 
-// localStorage-backed UI state (per person — your filters/view are yours, not synced)
+// localStorage-backed UI state (per person: your filters/view are yours, not synced)
 function usePersistentState(key, initial) {
   const [v, setV] = useState(() => {
     try {

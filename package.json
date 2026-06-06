@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "LedMig — realtime team board (whiteboard + timeline + progress) for the 3-person dev team. Serverless realtime via Yjs + WebRTC.",
+  "description": "LedMig: realtime team board (whiteboard + timeline + progress) for the 3-person dev team. Serverless realtime via Yjs + WebRTC.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

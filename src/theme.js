@@ -1,4 +1,4 @@
-// Visual language — borrowed from the LedMig app (soft light "gräddvit" + warm rose),
+// Visual language: borrowed from the LedMig app (soft light "gräddvit" + warm rose),
 // but desktop-scaled for a wide team board.
 export const T = {
   font: "'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif",

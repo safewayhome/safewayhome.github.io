@@ -1,5 +1,5 @@
 /**
- * Initialt board-innehåll — det verkliga LedMig-arbetet, fördelat på de fyra teamen.
+ * Initialt board-innehåll: det verkliga LedMig-arbetet, fördelat på de fyra teamen.
  * Stabila id:n så att två peers som seedar samtidigt konvergerar (inga dubbletter).
  * Statusar speglar ungefär var projektet står, så tavlan är meningsfull från dag ett.
  *   status:     'todo' | 'doing' | 'done'

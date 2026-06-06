@@ -30,7 +30,7 @@ export function progressByCategory(tasks) {
   }))
 }
 
-/** Framsteg per svårighetsgrad — en post per fast svårighetsgrad (alltid alla fyra). */
+/** Framsteg per svårighetsgrad: en post per fast svårighetsgrad (alltid alla fyra). */
 export function progressByDifficulty(tasks) {
   return DIFFICULTIES.map((d) => ({
     diff: d,

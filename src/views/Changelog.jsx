@@ -214,7 +214,7 @@ export default function Changelog() {
         <Reveal>
           <div style={{ textAlign: 'center', color: T.inkSoft, fontSize: 12.5, marginTop: 30, lineHeight: 1.6 }}>
             LedMig · ett pågående examensarbete om trygg gångnavigering.<br />
-            Bara lagliga, avidentifierade datakällor — integritet i grunden.
+            Bara lagliga, avidentifierade datakällor: integritet i grunden.
           </div>
         </Reveal>
       </div>

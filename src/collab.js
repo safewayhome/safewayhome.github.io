@@ -1,5 +1,5 @@
 /**
- * Realtime backbone — serverless, no backend, no accounts.
+ * Realtime backbone: serverless, no backend, no accounts.
  *
  *   Yjs (CRDT)  ·  Trystero over Nostr relays (peer-to-peer WebRTC)  ·  y-indexeddb (offline)
  *

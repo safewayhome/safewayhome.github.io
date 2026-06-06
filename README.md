@@ -3,20 +3,20 @@
 A realtime, desktop team board tailored for the 3-person LedMig dev team — like a tiny
 Microsoft Whiteboard / FigJam / Trello, but built around *our* four teams and *our* roadmap.
 
-Each task carries a **difficulty** — one of four fixed, colour-coded grades: 🟢 Enkla (easy),
+Each task carries a **difficulty**: one of four fixed, colour-coded grades: 🟢 Enkla (easy),
 🟡 Medel (medium), 🔴 Svåra (hard), 🟥 Extremt svåra (extreme). (We track difficulty, not hours.)
 
 Four views, one shared dataset:
 
-- **Nätet** — clean category *lanes* (one column per team) instead of a tangled web. Cards are
+- **Nätet**: clean category *lanes* (one column per team) instead of a tangled web. Cards are
   colour-coded by difficulty; only real **dependencies** are drawn, as soft rounded arrows. Add a
   card with the **＋** in any lane header or by double-clicking the canvas; drag cards anywhere
   (positions sync to everyone), and **⊞ Ordna kolumner** snaps them back into tidy columns.
-- **Tidslinje** — the order we want to do things in. Each card says *what* to do and, if we have
+- **Tidslinje**: the order we want to do things in. Each card says *what* to do and, if we have
   an idea, *how* we'll solve it. Reorder with ↑/↓.
-- **Framsteg** — a main progress bar (**done tasks / total**) plus one bar per difficulty grade
+- **Framsteg**: a main progress bar (**done tasks / total**) plus one bar per difficulty grade
   showing how much of that grade is finished, and a per-team breakdown. All count-based.
-- **Changelog** — a human, jargon-free description of what LedMig is, a layered diagram of how the
+- **Changelog**: a human, jargon-free description of what LedMig is, a layered diagram of how the
   system fits together (app → API → core → storage → data sources), and a chronological log of
   everything built and everything still planned, with calm scroll-reveal.
 
