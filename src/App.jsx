@@ -10,6 +10,7 @@ import Whiteboard from './views/Whiteboard.jsx'
 import Timeline from './views/Timeline.jsx'
 import Progress from './views/Progress.jsx'
 import Changelog from './views/Changelog.jsx'
+import Data from './views/Data.jsx'
 import TaskEditor from './components/TaskEditor.jsx'
 import { Avatar, initials } from './components/Avatar.jsx'
 
@@ -34,6 +35,7 @@ const VIEWS = [
   { key: 'timeline', label: 'Tidslinje', glyph: '🗓️' },
   { key: 'progress', label: 'Framsteg', glyph: '📊' },
   { key: 'changelog', label: 'Changelog', glyph: '📜' },
+  { key: 'data', label: 'Data', glyph: '🛰️' },
 ]
 
 export default function App() {
@@ -129,6 +131,9 @@ export default function App() {
         {view === 'changelog' && (
           <Changelog tasks={tasks} />
         )}
+        {view === 'data' && (
+          <Data />
+        )}
       </div>
 
       {editing && (
@@ -181,8 +186,8 @@ function TopBar(props) {
         ))}
       </div>
 
-      {/* category visibility checkboxes (irrelevanta i changelog-vyn) */}
-      {view !== 'changelog' && (
+      {/* category visibility checkboxes (irrelevanta i changelog-/data-vyn) */}
+      {view !== 'changelog' && view !== 'data' && (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {CATEGORIES.map((c) => {
           const on = cats[c.key]
