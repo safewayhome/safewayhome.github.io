@@ -40,6 +40,12 @@ input, select, textarea { font-family: inherit; }
 @keyframes lm-caret { 0%,100% { opacity: 0; } 50% { opacity: 1; } }
 /* Långsamt vandrande gradient (panelens topp-accent). */
 @keyframes lm-flow { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+/* Premium-pass: mjuk entré för bubblor/kort, andas-puls på AI-märket, ljussvep över forsknings-kortet,
+   och en långsamt roterande glödring runt AI-märket när pipelinen kör. */
+@keyframes lm-rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes lm-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes lm-sheen { 0% { transform: translateX(-160%); } 60%,100% { transform: translateX(360%); } }
+@keyframes lm-ring { to { transform: rotate(360deg); } }
 
 /* Markdown i chatt-bubblor: trimma yttersta marginalerna så texten sitter snyggt i kortet. */
 .lm-md > :first-child { margin-top: 0 !important; }
