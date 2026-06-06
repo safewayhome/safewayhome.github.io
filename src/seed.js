@@ -91,11 +91,7 @@ export const SEED = [
     approach: 'Supabase Postgres + Realtime (delad DB, historik per kort, skapar-avatar), React Flow; deployas på GitHub Pages.', deps: ['seed_theme'] },
 
   // ──────────────────────────── Marknadsföring ───────────────────────
-  { id: 'seed_report', category: 'mkt', sub: 'Exjobb & rapport', status: 'doing', difficulty: 'extrem',
-    title: 'Exjobbsrapport',
-    description: 'Skriv och strukturera examensarbetet.',
-    approach: 'Bakgrund, metod (DSRO/FSM), etik/GDPR, resultat.' },
-  { id: 'seed_ethics', category: 'mkt', sub: 'Exjobb & rapport', status: 'done', difficulty: 'medel',
+  { id: 'seed_ethics', category: 'mkt', sub: 'Etik & juridik', status: 'done', difficulty: 'medel',
     title: 'Etik & datalaglighet',
     description: 'Säkerställ lagliga datakällor + GDPR.',
     approach: 'Endast Polis-API + TDM; olaglig scraping borttagen och dokumenterad.', deps: ['seed_tdm'] },

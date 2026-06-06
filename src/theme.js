@@ -45,7 +45,7 @@ export const CATEGORIES = [
   },
   {
     key: 'mkt', label: 'Marknadsföring', color: '#f0a83c', glyph: '📣',
-    subs: ['Exjobb & rapport', 'Pitch & demo', 'Webb & landing', 'Användartester'],
+    subs: ['Etik & juridik', 'Pitch & demo', 'Webb & landing', 'Användartester'],
   },
 ]
 
