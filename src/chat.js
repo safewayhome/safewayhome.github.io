@@ -34,14 +34,24 @@ function createStore(initial) {
 
 export const messagesStore = createStore([])         // hela chatt-loggen, kronologiskt
 // live = pågående AI-körning. active styr om forsknings-UI:t visas.
-export const liveStore = createStore({ active: false, step: 0, progress: 0, label: '', model: '', thinking: '', answer: '', error: '' })
+export const liveStore = createStore({ active: false, mode: '', steps: [], step: 0, progress: 0, label: '', model: '', thinking: '', answer: '', error: '' })
 
 const knownIds = new Set()   // dedup: rad-id vi redan visar (lokala insert + realtime + done)
 
 function addMessage(row) {
   if (!row || !row.id || knownIds.has(row.id)) return
+  let list = messagesStore.get()
+  // Om detta är den RIKTIGA DB-raden för ett AI-svar vi redan visat optimistiskt (id 'local-ai-…' när
+  // backend hann svara utan message_id), ersätt den lokala raden i stället för att lägga till en dubblett.
+  if (row.is_ai && !String(row.id).startsWith('local-ai-')) {
+    const dupIdx = list.findIndex((m) => m.is_ai && String(m.id).startsWith('local-ai-') && m.message_text === row.message_text)
+    if (dupIdx >= 0) {
+      knownIds.delete(list[dupIdx].id)
+      list = list.filter((_, i) => i !== dupIdx)
+    }
+  }
   knownIds.add(row.id)
-  const next = [...messagesStore.get(), row]
+  const next = [...list, row]
   next.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
   messagesStore.set(next)
 }
@@ -101,7 +111,7 @@ export async function fetchUsers() {
 
 // Läser SSE-strömmen från pipelinen och driver liveStore (steg/framsteg/tänkande/svar) live.
 async function streamPipeline(message, image_url) {
-  liveStore.set({ active: true, step: 0, progress: 2, label: 'Startar…', model: '', thinking: '', answer: '', error: '' })
+  liveStore.set({ active: true, mode: '', steps: [], step: 0, progress: 2, label: 'Startar…', model: '', thinking: '', answer: '', error: '' })
   let resp
   try {
     const { data: { session } } = await supabase.auth.getSession()
@@ -146,7 +156,10 @@ async function streamPipeline(message, image_url) {
 
 function handleEvent(obj) {
   const s = liveStore.get()
-  if (obj.type === 'status') {
+  if (obj.type === 'plan') {
+    // Backend talar om läge (code/text) + vilka steg-etiketter som gäller -> styr forsknings-UI:t.
+    liveStore.update({ mode: obj.mode || '', steps: Array.isArray(obj.steps) ? obj.steps : [] })
+  } else if (obj.type === 'status') {
     liveStore.update({ step: obj.step, progress: Math.max(s.progress, obj.progress || 0), label: obj.label || s.label, model: obj.model || s.model })
   } else if (obj.type === 'thinking') {
     // krypa framstegsindikatorn framåt inom stegets band så den känns levande mellan status-eventen

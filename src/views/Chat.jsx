@@ -178,7 +178,9 @@ function ChatRoom({ myEmail }) {
   }, [text])
 
   async function onSend() {
-    if (busy || (!text.trim() && !imageFile)) return
+    // Blockera ny inskickning medan en pipeline redan streamar: annars krockar två streamPipeline
+    // om samma liveStore (steg/tänkande/svar nollställs mitt i).
+    if (busy || live.active || (!text.trim() && !imageFile)) return
     setBusy(true); setErr('')
     const { error } = await sendMessage(text, imageFile)
     setBusy(false)
@@ -187,7 +189,7 @@ function ChatRoom({ myEmail }) {
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  const canSend = !busy && (text.trim() || imageFile)
+  const canSend = !busy && !live.active && (text.trim() || imageFile)
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', background: T.bg, overflow: 'hidden' }}>
@@ -437,11 +439,51 @@ function Markdown({ text }) {
 }
 
 /* ───────────────────────────── Forsknings-UI (under körning) ───────────────────────────── */
+// Standard-stegen (CODE-läge). I textläge skickar backend egna etiketter via 'plan' (live.steps).
 const STEPS = [
   { n: 1, label: 'Analys', glyph: '🧠' },
   { n: 2, label: 'Kodgenerering', glyph: '⚙️' },
   { n: 3, label: 'Granskning', glyph: '✨' },
 ]
+
+// Välj passande ikon till ett steg utifrån etiketten (funkar i både kod- och textläge).
+function glyphFor(label = '', i = 0) {
+  const l = label.toLowerCase()
+  if (l.includes('analys')) return '🧠'
+  if (l.includes('sök')) return '🔎'
+  if (l.includes('kod')) return '⚙️'
+  if (l.includes('gransk')) return '✨'
+  if (l.includes('svar')) return '💬'
+  return ['🧠', '⚙️', '✨'][i] || '•'
+}
+
+// "Ikon för modellen": en monogram-bricka i leverantörens färg + det läsbara modellnamnet.
+function modelMeta(model = '') {
+  const s = model.toLowerCase()
+  if (s.includes('gemini')) return { label: 'G', color: '#4285F4' }
+  if (s.includes('gpt') || s.includes('openai')) return { label: 'AI', color: '#10a37f' }
+  if (s.includes('qwen')) return { label: 'Q', color: '#7c3aed' }
+  if (s.includes('llama') || s.includes('meta')) return { label: 'L', color: '#0866ff' }
+  if (s.includes('openrouter')) return { label: 'OR', color: '#64748b' }
+  return { label: 'AI', color: T.rose }
+}
+
+function ModelChip({ model }) {
+  const m = modelMeta(model)
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 11, color: T.inkSoft, fontWeight: 700,
+      background: 'rgba(255,255,255,0.75)', borderRadius: 999, padding: '3px 11px 3px 4px',
+      border: `1px solid ${T.line}`, boxShadow: LIFT_SOFT, maxWidth: 240,
+    }}>
+      <span style={{
+        flex: '0 0 auto', width: 18, height: 18, borderRadius: 999, display: 'grid', placeItems: 'center',
+        background: m.color, color: '#fff', fontSize: 9, fontWeight: 800, letterSpacing: -0.2,
+      }}>{m.label}</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{model}</span>
+    </span>
+  )
+}
 
 function ResearchPanel({ live }) {
   const pct = Math.max(0, Math.min(100, Math.round(live.progress)))
@@ -449,6 +491,12 @@ function ResearchPanel({ live }) {
   // håll tänkande-rutan rullad till senaste tecknet (rinnande CoT)
   useEffect(() => { if (thinkRef.current) thinkRef.current.scrollTop = thinkRef.current.scrollHeight }, [live.thinking])
   const step = live.step || 1
+  // Stegen kommer från backend (plan-event): kod- och textläge har olika etiketter/antal.
+  const pills = (live.steps && live.steps.length)
+    ? live.steps.map((label, i) => ({ n: i + 1, label, glyph: glyphFor(label, i) }))
+    : STEPS
+  const stepCount = pills.length
+  const band = 100 / stepCount
 
   return (
     <div style={{
@@ -480,22 +528,19 @@ function ResearchPanel({ live }) {
             <span style={{ fontWeight: 800, fontSize: 14, color: T.ink, letterSpacing: -0.2, whiteSpace: 'nowrap' }}>AI:n arbetar</span>
             <Dots />
           </div>
-          <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600, whiteSpace: 'nowrap' }}>{live.label || STEPS[step - 1]?.label} · steg {Math.min(step, 3)} / 3</span>
+          <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600, whiteSpace: 'nowrap' }}>{live.label || pills[step - 1]?.label} · steg {Math.min(step, stepCount)} / {stepCount}</span>
         </div>
         <div style={{ flex: 1 }} />
-        {live.model && <span style={{
-          fontSize: 11, color: T.inkSoft, fontWeight: 700, background: 'rgba(255,255,255,0.75)',
-          borderRadius: 999, padding: '4px 11px', border: `1px solid ${T.line}`, boxShadow: LIFT_SOFT,
-        }}>{live.model}</span>}
+        {live.model && <ModelChip model={live.model} />}
       </div>
 
       {/* steg-piller som fylls i takt med kedjan (var och en med egen fyll-remsa) */}
       <div style={{ position: 'relative', display: 'flex', gap: 9, padding: '0 18px 12px' }}>
-        {STEPS.map((s) => {
+        {pills.map((s) => {
           const done = step > s.n
           const active = step === s.n
           const tone = done ? T.done : active ? T.roseDeep : T.inkSoft
-          const fill = done ? '100%' : active ? Math.max(8, Math.min(100, ((pct - (s.n - 1) * 33) / 33) * 100)) + '%' : '0%'
+          const fill = done ? '100%' : active ? Math.max(8, Math.min(100, ((pct - (s.n - 1) * band) / band) * 100)) + '%' : '0%'
           return (
             <div key={s.n} style={{
               position: 'relative', flex: 1, overflow: 'hidden',
@@ -509,7 +554,7 @@ function ResearchPanel({ live }) {
                 background: done ? T.done : active ? `linear-gradient(150deg, ${T.rose}, ${T.roseDeep})` : '#fff',
                 color: (done || active) ? '#fff' : T.inkSoft, border: active || done ? 'none' : `1px solid ${T.line}`,
                 boxShadow: active ? `0 2px 6px -2px ${T.roseDeep}` : 'none',
-              }}>{done ? '✓' : s.n}</span>
+              }}>{done ? '✓' : (s.glyph || s.n)}</span>
               <span style={{ flex: '1 1 auto', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</span>
               {/* fyll-remsa längst ner i steget */}
               <div style={{
@@ -533,7 +578,7 @@ function ResearchPanel({ live }) {
           }} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: T.inkSoft, marginTop: 6, fontWeight: 700 }}>
-          <span>{live.label || STEPS[step - 1]?.label}</span>
+          <span>{live.label || pills[step - 1]?.label}</span>
           <span style={{ fontVariantNumeric: 'tabular-nums', color: T.roseDeep }}>{pct}%</span>
         </div>
       </div>
@@ -543,10 +588,10 @@ function ResearchPanel({ live }) {
         <div style={{ position: 'relative', padding: '4px 18px 12px' }}>
           <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, marginBottom: 5, letterSpacing: 0.5, textTransform: 'uppercase' }}>Tänkande-process</div>
           <div ref={thinkRef} style={{
-            maxHeight: 150, overflowY: 'auto', background: 'rgba(251,243,239,0.8)', border: `1px solid ${T.line}`,
-            borderRadius: 12, padding: '11px 13px', fontSize: 12, lineHeight: 1.55, color: T.inkSoft,
-            whiteSpace: 'pre-wrap', fontFamily: MONO, boxShadow: 'inset 0 1px 3px rgba(63,54,64,0.04)',
-          }}>{live.thinking}<Caret /></div>
+            maxHeight: 170, overflowY: 'auto', background: 'rgba(251,243,239,0.8)', border: `1px solid ${T.line}`,
+            borderRadius: 12, padding: '11px 13px', fontSize: 13, lineHeight: 1.55, color: T.ink,
+            boxShadow: 'inset 0 1px 3px rgba(63,54,64,0.04)',
+          }}><Markdown text={live.thinking} /><Caret /></div>
         </div>
       )}
 
