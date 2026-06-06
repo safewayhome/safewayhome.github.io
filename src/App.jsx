@@ -11,6 +11,7 @@ import Timeline from './views/Timeline.jsx'
 import Progress from './views/Progress.jsx'
 import Changelog from './views/Changelog.jsx'
 import Data from './views/Data.jsx'
+import Chat from './views/Chat.jsx'
 import TaskEditor from './components/TaskEditor.jsx'
 import { Avatar, initials } from './components/Avatar.jsx'
 
@@ -36,6 +37,7 @@ const VIEWS = [
   { key: 'progress', label: 'Framsteg', glyph: '📊' },
   { key: 'changelog', label: 'Changelog', glyph: '📜' },
   { key: 'data', label: 'Data', glyph: '🛰️' },
+  { key: 'chat', label: 'Team Chat', glyph: '💬' },
 ]
 
 export default function App() {
@@ -140,6 +142,9 @@ export default function App() {
         {view === 'data' && (
           <Data />
         )}
+        {view === 'chat' && (
+          <Chat onRequireLogin={() => setShowLogin(true)} />
+        )}
       </div>
 
       {editing && (
@@ -196,8 +201,8 @@ function TopBar(props) {
         ))}
       </div>
 
-      {/* category visibility checkboxes (irrelevanta i changelog-/data-vyn) */}
-      {view !== 'changelog' && view !== 'data' && (
+      {/* category visibility checkboxes (irrelevanta i changelog-/data-/chat-vyn) */}
+      {view !== 'changelog' && view !== 'data' && view !== 'chat' && (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {CATEGORIES.map((c) => {
           const on = cats[c.key]
