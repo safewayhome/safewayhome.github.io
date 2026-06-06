@@ -9,6 +9,7 @@ import { SEED } from './seed'
 import Whiteboard from './views/Whiteboard.jsx'
 import Timeline from './views/Timeline.jsx'
 import Progress from './views/Progress.jsx'
+import Changelog from './views/Changelog.jsx'
 import TaskEditor from './components/TaskEditor.jsx'
 import { Avatar, initials } from './components/Avatar.jsx'
 
@@ -29,9 +30,10 @@ function usePersistentState(key, initial) {
 }
 
 const VIEWS = [
-  { key: 'board', label: 'Whiteboard', glyph: '🕸️' },
-  { key: 'timeline', label: 'Timeline', glyph: '🗓️' },
-  { key: 'progress', label: 'Progress', glyph: '📊' },
+  { key: 'board', label: 'Nätet', glyph: '🧩' },
+  { key: 'timeline', label: 'Tidslinje', glyph: '🗓️' },
+  { key: 'progress', label: 'Framsteg', glyph: '📊' },
+  { key: 'changelog', label: 'Changelog', glyph: '📜' },
 ]
 
 export default function App() {
@@ -39,12 +41,12 @@ export default function App() {
   const people = usePeople()
   const conn = useConnection()
 
-  const [view, setView] = usePersistentState('swh.view', 'board')
+  const [view, setView] = usePersistentState('lm.view', 'board')
   const [cats, setCats] = usePersistentState(
-    'swh.filter.cats',
+    'lm.filter.cats',
     Object.fromEntries(CATEGORIES.map((c) => [c.key, true])),
   )
-  const [hiddenSubs, setHiddenSubs] = usePersistentState('swh.filter.subs', [])
+  const [hiddenSubs, setHiddenSubs] = usePersistentState('lm.filter.subs', [])
   const [filterOpen, setFilterOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [showName, setShowName] = useState(!identity.name)
@@ -116,13 +118,16 @@ export default function App() {
 
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {view === 'board' && (
-          <Whiteboard tasks={tasks} visibleTasks={visibleTasks} onOpenTask={setEditingId} />
+          <Whiteboard tasks={tasks} visibleTasks={visibleTasks} cats={cats} onOpenTask={setEditingId} />
         )}
         {view === 'timeline' && (
           <Timeline tasks={tasks} visibleTasks={visibleTasks} onOpenTask={setEditingId} />
         )}
         {view === 'progress' && (
           <Progress tasks={tasks} visibleTasks={visibleTasks} cats={cats} />
+        )}
+        {view === 'changelog' && (
+          <Changelog tasks={tasks} />
         )}
       </div>
 
@@ -157,7 +162,7 @@ function TopBar(props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 210 }}>
         <span style={{ fontSize: 22 }}>🛡️</span>
         <div style={{ lineHeight: 1.05 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, color: T.ink }}>SafeWayHome</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: T.ink }}>LedMig</div>
           <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}>Team Board · realtid</div>
         </div>
       </div>
@@ -176,7 +181,8 @@ function TopBar(props) {
         ))}
       </div>
 
-      {/* category visibility checkboxes */}
+      {/* category visibility checkboxes (irrelevanta i changelog-vyn) */}
+      {view !== 'changelog' && (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {CATEGORIES.map((c) => {
           const on = cats[c.key]
@@ -208,6 +214,7 @@ function TopBar(props) {
           )}
         </div>
       </div>
+      )}
 
       <div style={{ flex: 1 }} />
 
@@ -267,7 +274,7 @@ function ConnChip({ conn }) {
       display: 'flex', alignItems: 'center', gap: 7, padding: '6px 11px', borderRadius: 999,
       background: color + '1e', color: T.ink, fontWeight: 700, fontSize: 12.5, border: `1px solid ${color}55`,
     }}>
-      <span style={{ width: 8, height: 8, borderRadius: 999, background: color, animation: conn.online ? 'none' : 'swh-pulse 1.4s infinite' }} />
+      <span style={{ width: 8, height: 8, borderRadius: 999, background: color, animation: conn.online ? 'none' : 'lm-pulse 1.4s infinite' }} />
       {conn.online ? `${people + 1} online` : 'offline'}
     </div>
   )
@@ -301,7 +308,7 @@ function ModalShell({ children, onClose, width = 420 }) {
   return (
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(63,54,64,0.28)',
-      display: 'grid', placeItems: 'center', animation: 'swh-fade-in .12s ease',
+      display: 'grid', placeItems: 'center', animation: 'lm-fade-in .12s ease',
     }}>
       <div onClick={(e) => e.stopPropagation()} style={{
         width, maxWidth: '92vw', background: T.panel, borderRadius: 18, boxShadow: T.shadow, padding: 22,
@@ -387,7 +394,7 @@ function exportBoard() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `safewayhome-board-${ROOM}.json`
+  a.download = `ledmig-board-${ROOM}.json`
   document.body.appendChild(a)
   a.click()
   a.remove()

@@ -23,7 +23,7 @@ fi
 # 1. create the public repo in the org (idempotent)
 if ! gh repo view "${ORG}/${REPO}" >/dev/null 2>&1; then
   gh repo create "${ORG}/${REPO}" --public \
-    --description "SafeWayHome team board — realtime whiteboard + timeline + progress"
+    --description "LedMig team board — realtime whiteboard + timeline + progress"
 fi
 
 # 2. push the current board to it

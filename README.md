@@ -1,18 +1,24 @@
-# SafeWayHome · Team Board 🕸️🗓️📊
+# LedMig · Team Board 🧩🗓️📊📜
 
-A realtime, desktop team board tailored for the 3-person SafeWayHome dev team — like a tiny
+A realtime, desktop team board tailored for the 3-person LedMig dev team — like a tiny
 Microsoft Whiteboard / FigJam / Trello, but built around *our* four teams and *our* roadmap.
 
-Three views, one shared dataset:
+Each task carries a **difficulty** — one of four fixed, colour-coded grades: 🟢 Enkla (easy),
+🟡 Medel (medium), 🔴 Svåra (hard), 🟥 Extremt svåra (extreme). (We track difficulty, not hours.)
 
-- **Whiteboard** — a *spider-web* of everything to build. Each team is a hub; tasks ring around
-  it; dependency threads cross the web. **Done** tasks fade to translucent + green ✓ so you can
-  see at a glance how far we've come. Drag tasks around (positions sync to everyone).
-- **Timeline** — the order we want to do things in. Each card says *what* to do and, if we have
+Four views, one shared dataset:
+
+- **Nätet** — clean category *lanes* (one column per team) instead of a tangled web. Cards are
+  colour-coded by difficulty; only real **dependencies** are drawn, as soft rounded arrows. Add a
+  card with the **＋** in any lane header or by double-clicking the canvas; drag cards anywhere
+  (positions sync to everyone), and **⊞ Ordna kolumner** snaps them back into tidy columns.
+- **Tidslinje** — the order we want to do things in. Each card says *what* to do and, if we have
   an idea, *how* we'll solve it. Reorder with ↑/↓.
-- **Progress** — an estimate-weighted progress bar (weighted by how long each task is estimated
-  to take, not just task count) plus a written breakdown: hours spent vs. remaining, per team,
-  and a rough calendar estimate for 3 people.
+- **Framsteg** — a main progress bar (**done tasks / total**) plus one bar per difficulty grade
+  showing how much of that grade is finished, and a per-team breakdown. All count-based.
+- **Changelog** — a human, jargon-free description of what LedMig is, a layered diagram of how the
+  system fits together (app → API → core → storage → data sources), and a chronological log of
+  everything built and everything still planned, with calm scroll-reveal.
 
 Filter which teams/sub-categories are visible with the checkboxes up top (your view is yours —
 filters are local, the data is shared).
@@ -58,12 +64,14 @@ need to override them (or run a fully private rendezvous), pass your own:
 
 ## Deploy (GitHub Pages)
 
-This is deployed as the **org root site** at **https://safewayhome.github.io/** from the repo
-`safewayhome/safewayhome.github.io`. Pushing to `main` triggers `.github/workflows/deploy.yml`, which
+This is deployed as the **org root site**. Public domain: **https://ledmig.nu/** (set as a CNAME on
+the GitHub Pages site **safewayhome.github.io**) from the repo `safewayhome/safewayhome.github.io`
+(GitHub org/repo names unchanged — only the public domain rebrands). Pushing to `main` triggers
+`.github/workflows/deploy.yml`, which
 builds with Vite (base `/` for a `*.github.io` repo, `/<repo>/` otherwise) and publishes `dist/` to
 Pages. Enable once: **Repo → Settings → Pages → Source: GitHub Actions**.
 
 ## Tech
 
 React 18 + Vite · React Flow (whiteboard graph) · Yjs + Trystero (Nostr) + y-indexeddb (realtime) ·
-inline styles in the SafeWayHome palette (gräddvit + rose, Nunito). No tracking, no accounts.
+inline styles in the LedMig palette (gräddvit + rose, Nunito). No tracking, no accounts.

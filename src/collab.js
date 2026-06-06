@@ -17,7 +17,7 @@ import { joinRoom } from 'trystero/nostr'
 import {
   Awareness, encodeAwarenessUpdate, applyAwarenessUpdate,
 } from 'y-protocols/awareness'
-import { PRESENCE_COLORS } from './theme'
+import { PRESENCE_COLORS, DEFAULT_DIFFICULTY } from './theme'
 
 // --------------------------------------------------------------------------- config
 const params = new URLSearchParams(location.search)
@@ -25,17 +25,17 @@ const params = new URLSearchParams(location.search)
 // invited teammate would silently drop back to the default room on the next refresh.
 ;['room', 'pass', 'relays'].forEach((k) => {
   const v = params.get(k)
-  if (v != null && v !== '') { try { localStorage.setItem('swh.' + k, v) } catch { /* ignore */ } }
+  if (v != null && v !== '') { try { localStorage.setItem('lm.' + k, v) } catch { /* ignore */ } }
 })
 const cfg = (key, fallback) =>
-  params.get(key) || localStorage.getItem('swh.' + key) || fallback
+  params.get(key) || localStorage.getItem('lm.' + key) || fallback
 
 // Security model: this is a *shared secret / hard-to-guess room*, not per-user auth. The
 // room+password ship in the public bundle, so treat the board as internal-but-not-confidential.
 // For a private room, share an invite link with a custom ?room=&pass= (persisted above).
-export const ROOM = cfg('room', 'safewayhome-team-v1')
+export const ROOM = cfg('room', 'ledmig-team-v1')
 export const ROOM_PASSWORD = cfg('pass', 'getsafehome-2026') // E2E-encrypts the P2P payload
-const APP_ID = 'safewayhome-team-board' // namespaces the app across all teammates
+const APP_ID = 'ledmig-team-board' // namespaces the app across all teammates
 
 // Verified-reachable public Nostr relays (used only for signaling; data stays P2P).
 const DEFAULT_RELAYS = [
@@ -58,7 +58,7 @@ export const yTasks = ydoc.getMap('tasks') // id -> Y.Map(fields)
 export const yMeta = ydoc.getMap('meta')
 export const awareness = new Awareness(ydoc)
 
-export const persistence = new IndexeddbPersistence('swh-team-board::' + ROOM, ydoc)
+export const persistence = new IndexeddbPersistence('lm-team-board::' + ROOM, ydoc)
 
 const room = joinRoom(
   { appId: APP_ID, password: ROOM_PASSWORD, relayConfig: { urls: RELAYS, redundancy: Math.min(5, RELAYS.length) } },
@@ -90,19 +90,19 @@ awrAction.onMessage = (data) => applyAwarenessUpdate(awareness, toU8(data), 'rem
 
 // --------------------------------------------------------------------------- identity
 function loadIdentity() {
-  let id = localStorage.getItem('swh.clientId')
+  let id = localStorage.getItem('lm.clientId')
   if (!id) {
     id = Math.random().toString(36).slice(2, 10)
-    localStorage.setItem('swh.clientId', id)
+    localStorage.setItem('lm.clientId', id)
   }
-  let colorIdx = parseInt(localStorage.getItem('swh.colorIdx') ?? '', 10)
+  let colorIdx = parseInt(localStorage.getItem('lm.colorIdx') ?? '', 10)
   if (Number.isNaN(colorIdx)) {
     colorIdx = Math.floor(Math.random() * PRESENCE_COLORS.length)
-    localStorage.setItem('swh.colorIdx', String(colorIdx))
+    localStorage.setItem('lm.colorIdx', String(colorIdx))
   }
   return {
     id,
-    name: localStorage.getItem('swh.name') || '',
+    name: localStorage.getItem('lm.name') || '',
     colorIdx,
     color: PRESENCE_COLORS[colorIdx % PRESENCE_COLORS.length],
   }
@@ -120,9 +120,9 @@ publishUser()
 
 export function setIdentity(patch) {
   identity = { ...identity, ...patch }
-  if (patch.name !== undefined) localStorage.setItem('swh.name', patch.name)
+  if (patch.name !== undefined) localStorage.setItem('lm.name', patch.name)
   if (patch.colorIdx !== undefined) {
-    localStorage.setItem('swh.colorIdx', String(patch.colorIdx))
+    localStorage.setItem('lm.colorIdx', String(patch.colorIdx))
     identity.color = PRESENCE_COLORS[patch.colorIdx % PRESENCE_COLORS.length]
   }
   publishUser()
@@ -186,8 +186,7 @@ const TASK_DEFAULTS = () => ({
   category: 'dev',
   sub: '',
   status: 'todo',
-  estimateH: 4,
-  spentH: 0,
+  difficulty: DEFAULT_DIFFICULTY,
   order: nextOrder(),
   x: null,
   y: null,
@@ -334,7 +333,7 @@ let seedAttempted = false
 export function maybeSeed(seedTasks) {
   if (seedAttempted) return // guard StrictMode's double-invoke
   seedAttempted = true
-  const FLAG = 'swh.seeded.' + ROOM
+  const FLAG = 'lm.seeded.' + ROOM
   const remember = () => { try { localStorage.setItem(FLAG, '1') } catch { /* ignore */ } }
   const hasData = () => yTasks.size > 0 || !!yMeta.get('seeded')
   if (localStorage.getItem(FLAG) || hasData()) { remember(); return }

@@ -1,19 +1,17 @@
 import { useEffect, useState } from 'react'
-import { T, CATEGORIES, CAT, STATUS } from '../theme'
+import { T, CATEGORIES, CAT, STATUS, DIFFICULTIES } from '../theme'
 import { updateTask, deleteTask, setEditing, pingTyping } from '../collab'
 import { usePeople } from '../store'
-import { ago } from '../util'
+import { ago, diffKey } from '../util'
 import { Avatar } from './Avatar.jsx'
 
-// Free-text / number fields use a LOCAL draft while the editor is open, so a teammate's remote
-// edit can't yank your caret mid-keystroke, and partial decimals ("1.") are typeable. Discrete
-// controls (status / category / deps) write straight through — they have no caret to disturb.
+// Fritextfält använder ett LOKALT utkast medan editorn är öppen, så en kollegas fjärr-
+// redigering inte rycker din markör mitt i en tangenttryckning. Diskreta kontroller
+// (status / kategori / svårighetsgrad / beroenden) skrivs rakt igenom — de har ingen markör att störa.
 const seedDraft = (t) => ({
   title: t.title ?? '',
   description: t.description ?? '',
   approach: t.approach ?? '',
-  estimateH: String(t.estimateH ?? 0),
-  spentH: String(t.spentH ?? 0),
 })
 
 export default function TaskEditor({ task, allTasks, onClose }) {
@@ -32,24 +30,13 @@ export default function TaskEditor({ task, allTasks, onClose }) {
   const deps = task.deps || []
   const othersEditing = people.filter((p) => p.editing === task.id && p.user)
 
+  const curDiff = diffKey(task)
+
   // text field: keep raw in draft, mirror to Yjs live
   const onText = (key, raw) => {
     setDraft((d) => ({ ...d, [key]: raw }))
     pingTyping()
     commit({ [key]: raw })
-  }
-  // number field: draft holds the raw string (allows '', '1.'); only persist valid numbers
-  const onNum = (key, raw) => {
-    setDraft((d) => ({ ...d, [key]: raw }))
-    pingTyping()
-    const n = Number(raw)
-    if (raw !== '' && Number.isFinite(n) && n >= 0) commit({ [key]: n })
-  }
-  const onNumBlur = (key) => {
-    const n = Number(draft[key])
-    const v = Number.isFinite(n) && n >= 0 ? n : 0
-    setDraft((d) => ({ ...d, [key]: String(v) }))
-    commit({ [key]: v })
   }
 
   return (
@@ -58,7 +45,7 @@ export default function TaskEditor({ task, allTasks, onClose }) {
       <aside style={{
         position: 'fixed', top: 0, right: 0, height: '100%', width: 440, maxWidth: '94vw', zIndex: 51,
         background: T.panel, boxShadow: '-10px 0 30px rgba(63,54,64,0.16)', display: 'flex', flexDirection: 'column',
-        animation: 'swh-fade-in .14s ease',
+        animation: 'lm-fade-in .14s ease',
       }}>
         {/* header */}
         <div style={{ padding: '16px 18px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -112,18 +99,24 @@ export default function TaskEditor({ task, allTasks, onClose }) {
             </div>
           </div>
 
-          {/* estimates (text + inputMode so partial decimals are typeable) */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-            <div style={{ flex: 1 }}>
-              <Label>Uppskattat (h)</Label>
-              <input type="text" inputMode="decimal" value={draft.estimateH}
-                onChange={(e) => onNum('estimateH', e.target.value)} onBlur={() => onNumBlur('estimateH')} style={inp} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Label>Spenderat (h)</Label>
-              <input type="text" inputMode="decimal" value={draft.spentH}
-                onChange={(e) => onNum('spentH', e.target.value)} onBlur={() => onNumBlur('spentH')} style={inp} />
-            </div>
+          {/* svårighetsgrad — fyra fasta, färgkodade nivåer */}
+          <Label>Svårighetsgrad</Label>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
+            {DIFFICULTIES.map((d) => {
+              const on = curDiff === d.key
+              return (
+                <button key={d.key} onClick={() => commit({ difficulty: d.key })} title={d.label} style={{
+                  flex: 1, padding: '8px 4px', borderRadius: 10, fontWeight: 800, fontSize: 12,
+                  border: `1.5px solid ${on ? d.color : T.line}`,
+                  background: on ? d.color + '22' : T.panel,
+                  color: on ? d.text : T.inkSoft,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, lineHeight: 1.1,
+                }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 999, background: d.color, opacity: on ? 1 : 0.55 }} />
+                  {d.short}
+                </button>
+              )
+            })}
           </div>
 
           <Label>Vad ska göras (beskrivning)</Label>
@@ -134,7 +127,7 @@ export default function TaskEditor({ task, allTasks, onClose }) {
           <textarea value={draft.approach} onChange={(e) => onText('approach', e.target.value)} rows={3}
             placeholder="Översiktlig lösningsidé / verktyg." style={{ ...inp, marginBottom: 16, resize: 'vertical' }} />
 
-          <Label>Beror på (ritas som trådar i spindelnätet)</Label>
+          <Label>Beror på (ritas som pilar mellan korten i Nätet)</Label>
           <div style={{ border: `1px solid ${T.line}`, borderRadius: 10, padding: 8, maxHeight: 150, overflow: 'auto', marginBottom: 8 }}>
             {allTasks.filter((t) => t.id !== task.id).length === 0 && (
               <div style={{ fontSize: 12.5, color: T.inkSoft, padding: 4 }}>Inga andra uppgifter ännu.</div>

@@ -26,5 +26,10 @@ input, select, textarea { font-family: inherit; }
 /* React Flow attribution tucked away */
 .react-flow__attribution { background: transparent !important; font-size: 9px; opacity: 0.4; }
 
-@keyframes swh-pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
-@keyframes swh-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes lm-pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes lm-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Respektera användare som föredrar mindre rörelse (changelogens lugna in-toning m.m.) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}

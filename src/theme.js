@@ -1,4 +1,4 @@
-// Visual language — borrowed from the SafeWayHome app (soft light "gräddvit" + warm rose),
+// Visual language — borrowed from the LedMig app (soft light "gräddvit" + warm rose),
 // but desktop-scaled for a wide team board.
 export const T = {
   font: "'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif",
@@ -50,6 +50,21 @@ export const CATEGORIES = [
 ]
 
 export const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]))
+
+// Fyra fasta svårighetsgrader med färgkodning (grön → gul → röd → mörkröd).
+// En egen axel vid sidan av team-kategorin: vilket team som äger uppgiften (CATEGORIES)
+// säger inget om hur svår den är. Stabila nycklar (sparas i uppgiften som t.difficulty).
+// color = fyllning (prickar, staplar, kantremsor). text = mörkare variant som klarar WCAG AA-kontrast
+// som etikettext på ljus/soft bakgrund (de ljusa fyllnadsfärgerna är för svaga som text).
+export const DIFFICULTIES = [
+  { key: 'enkel', label: 'Enkla', short: 'Enkel', color: '#34b27b', soft: '#e3f5ec', text: '#15803d', glyph: '🟢' },
+  { key: 'medel', label: 'Medel', short: 'Medel', color: '#e0a92e', soft: '#fbeecb', text: '#8a6a00', glyph: '🟡' },
+  { key: 'svar', label: 'Svåra', short: 'Svår', color: '#ef4444', soft: '#fcdede', text: '#c81e1e', glyph: '🔴' },
+  { key: 'extrem', label: 'Extremt svåra', short: 'Extrem', color: '#8e1212', soft: '#ecc9c9', text: '#7a1010', glyph: '🟥' },
+]
+export const DIFF = Object.fromEntries(DIFFICULTIES.map((d) => [d.key, d]))
+// Default när en uppgift saknar svårighetsgrad (t.ex. äldre kort skapade före fältet fanns).
+export const DEFAULT_DIFFICULTY = 'medel'
 
 export const STATUS = {
   todo: { label: 'Att göra', color: T.todo, soft: T.todoSoft },

@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { T, CAT, STATUS } from '../theme'
 import { updateTask } from '../collab'
-import { fraction, round1, ago } from '../util'
+import { fraction, ago, diffOf } from '../util'
 
 export default function Timeline({ visibleTasks, onOpenTask }) {
   const ordered = useMemo(
@@ -50,6 +50,7 @@ export default function Timeline({ visibleTasks, onOpenTask }) {
 function Row({ t, i, last, onOpen, onUp, onDown }) {
   const cat = CAT[t.category] || {}
   const s = STATUS[t.status] || STATUS.todo
+  const d = diffOf(t)
   const done = t.status === 'done'
   return (
     <div style={{ display: 'flex', gap: 14, marginBottom: 14, position: 'relative' }}>
@@ -72,8 +73,8 @@ function Row({ t, i, last, onOpen, onUp, onDown }) {
             background: cat.color + '1c', padding: '2px 8px', borderRadius: 999,
           }}>{cat.glyph} {cat.label}{t.sub ? ` · ${t.sub}` : ''}</span>
           <span style={{ fontSize: 11, fontWeight: 800, color: s.color, background: s.soft, padding: '2px 8px', borderRadius: 999 }}>{s.label}</span>
+          <span style={{ fontSize: 11, fontWeight: 800, color: d.text, background: d.soft, padding: '2px 8px', borderRadius: 999 }}>{d.short}</span>
           <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: T.inkSoft }}>{round1(t.spentH)}/{round1(t.estimateH)} h</span>
           <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 4 }}>
             <button onClick={onUp} disabled={i === 0} style={{ ...arrow, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
             <button onClick={onDown} disabled={last} style={{ ...arrow, opacity: last ? 0.3 : 1 }}>↓</button>
