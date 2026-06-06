@@ -31,6 +31,19 @@ input, select, textarea { font-family: inherit; }
 /* Forsknings-UI (Team Chat): rinnande glans på framstegsfältet + blinkande "tänker"-prickar. */
 @keyframes lm-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 @keyframes lm-blink { 0%,100% { opacity: 0.2; } 50% { opacity: 1; } }
+/* Pulserande glöd runt panelen medan AI:n arbetar (gör det "levande"). */
+@keyframes lm-glow {
+  0%,100% { box-shadow: 0 0 0 1px #fb718533, 0 6px 22px rgba(251,113,133,0.12); }
+  50%     { box-shadow: 0 0 0 1px #fb718577, 0 10px 34px rgba(251,113,133,0.28); }
+}
+/* Skrivande-markör efter strömmande text. */
+@keyframes lm-caret { 0%,100% { opacity: 0; } 50% { opacity: 1; } }
+/* Långsamt vandrande gradient (panelens topp-accent). */
+@keyframes lm-flow { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+
+/* Markdown i chatt-bubblor: trimma yttersta marginalerna så texten sitter snyggt i kortet. */
+.lm-md > :first-child { margin-top: 0 !important; }
+.lm-md > :last-child { margin-bottom: 0 !important; }
 
 /* Respektera användare som föredrar mindre rörelse (changelogens lugna in-toning m.m.) */
 @media (prefers-reduced-motion: reduce) {

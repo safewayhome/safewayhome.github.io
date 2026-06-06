@@ -7,16 +7,23 @@
  *   - inloggad: själva chattrummet (ChatRoom).
  *
  * ChatRoom monteras bara när man är inloggad -> dess effekter (starta realtime, hämta historik) körs
- * vid rätt tillfälle och städas vid utloggning. Forsknings-UI:t (pulsande yta, framstegsindikator,
+ * vid rätt tillfälle och städas vid utloggning. Forsknings-UI:t (pulserande glöd, framstegsindikator,
  * rullande tänkande-process) drivs av liveStore som SSE-strömmen från backend fyller på i realtid.
+ *
+ * Svaren renderas som riktig Markdown (react-markdown + GFM) så rubriker, tabeller, citat och kodblock
+ * blir läsbara i stället för rå text.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { T } from '../theme'
 import { useAuth } from '../store'
 import { initials } from '../components/Avatar.jsx'
 import {
   messagesStore, liveStore, sendMessage, startChat, stopChat, fetchUsers, colorForEmail,
 } from '../chat'
+
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
 
 export default function Chat({ onRequireLogin }) {
   const auth = useAuth()
@@ -35,7 +42,7 @@ function LockView({ onLogin }) {
       }}>
         <div style={{
           width: 64, height: 64, borderRadius: 999, margin: '0 auto 16px', display: 'grid', placeItems: 'center',
-          background: T.roseSoft, fontSize: 30,
+          background: `linear-gradient(135deg, ${T.roseSoft}, #fff)`, fontSize: 30, boxShadow: T.shadowSoft,
         }}>🔒</div>
         <div style={{ fontWeight: 800, fontSize: 20, color: T.ink, marginBottom: 6 }}>Team Chat är privat</div>
         <div style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.55, marginBottom: 22 }}>
@@ -107,7 +114,11 @@ function ChatRoom({ myEmail }) {
         borderBottom: `1px solid ${T.line}`, background: T.panel,
       }}>
         <span style={{ fontSize: 18 }}>💬</span>
-        <div style={{ fontWeight: 800, fontSize: 15, color: T.ink }}>Team Chat</div>
+        <div style={{
+          fontWeight: 800, fontSize: 15,
+          background: `linear-gradient(90deg, ${T.roseDeep}, ${T.rose})`, WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+        }}>Team Chat</div>
         <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600 }}>3-stegs AI-pipeline · realtid</span>
         <div style={{ flex: 1 }} />
         <label style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>Visa:</label>
@@ -122,7 +133,7 @@ function ChatRoom({ myEmail }) {
 
       {/* Meddelanden */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 18px 8px' }}>
-        <div style={{ maxWidth: 860, margin: '0 auto' }}>
+        <div style={{ maxWidth: 880, margin: '0 auto' }}>
           {shown.length === 0 && (
             <div style={{ textAlign: 'center', color: T.inkSoft, fontSize: 13.5, marginTop: 40, lineHeight: 1.6 }}>
               Inga meddelanden än. Ställ en fråga eller klistra in en skärmdump:<br />
@@ -139,7 +150,7 @@ function ChatRoom({ myEmail }) {
 
       {/* Inmatning */}
       <div style={{ borderTop: `1px solid ${T.line}`, background: T.panel, padding: '12px 18px' }}>
-        <div style={{ maxWidth: 860, margin: '0 auto' }}>
+        <div style={{ maxWidth: 880, margin: '0 auto' }}>
           {err && <div style={{ fontSize: 12.5, color: T.roseDeep, marginBottom: 8 }}>{err}</div>}
           {imageFile && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -185,12 +196,14 @@ function Bubble({ m, mine }) {
   const color = isAI ? T.rose : colorForEmail(m.user_email)
   const time = fmtTime(m.created_at)
   return (
-    <div style={{ display: 'flex', gap: 10, margin: '10px 0', flexDirection: mine ? 'row-reverse' : 'row', animation: 'lm-fade-in .15s ease' }}>
+    <div style={{ display: 'flex', gap: 10, margin: '12px 0', flexDirection: mine ? 'row-reverse' : 'row', animation: 'lm-fade-in .18s ease' }}>
       <div title={name} style={{
-        flex: '0 0 auto', width: 32, height: 32, borderRadius: 999, background: color, color: '#fff',
-        display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 12,
+        flex: '0 0 auto', width: 34, height: 34, borderRadius: 999,
+        background: isAI ? `linear-gradient(135deg, ${T.rose}, ${T.roseDeep})` : color, color: '#fff',
+        display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13,
+        boxShadow: isAI ? `0 0 0 3px ${T.roseSoft}` : T.shadowSoft,
       }}>{isAI ? '🤖' : (initials(name.split('@')[0]) || '?')}</div>
-      <div style={{ maxWidth: '78%' }}>
+      <div style={{ maxWidth: '80%', minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 3, flexDirection: mine ? 'row-reverse' : 'row' }}>
           <span style={{ fontWeight: 800, fontSize: 12, color: isAI ? T.roseDeep : T.ink }}>{isAI ? 'LedMig AI' : name.split('@')[0]}</span>
           <span style={{ fontSize: 10.5, color: T.inkSoft }}>{time}</span>
@@ -198,102 +211,156 @@ function Bubble({ m, mine }) {
         <div style={{
           background: isAI ? T.panel : (mine ? T.roseSoft : T.panelSoft),
           border: `1px solid ${isAI ? T.line : (mine ? T.rose + '55' : T.line)}`,
-          borderRadius: 14, padding: '9px 13px', color: T.ink, fontSize: 14, lineHeight: 1.5,
+          borderRadius: 16, padding: '10px 14px', color: T.ink, fontSize: 14, lineHeight: 1.5,
+          boxShadow: isAI ? T.shadowSoft : 'none', overflowWrap: 'anywhere',
         }}>
           {m.image_url && (
             <a href={m.image_url} target="_blank" rel="noreferrer">
               <img src={m.image_url} alt="bifogad bild" style={{ maxWidth: '100%', borderRadius: 10, marginBottom: m.message_text ? 8 : 0, display: 'block' }} />
             </a>
           )}
-          {m.message_text && <MessageText text={m.message_text} />}
+          {m.message_text && <Markdown text={m.message_text} />}
         </div>
       </div>
     </div>
   )
 }
 
-// Minimal markdown: dela på ```-block. Fenced -> monospace-block, övrigt -> radbrytande text.
-function MessageText({ text }) {
-  const parts = String(text || '').split(/```/)
+/* ─────────── Markdown-rendering (react-markdown + GFM), stylad mot paletten ─────────── */
+const clean = ({ node, ...rest }) => rest   // react-markdown skickar med 'node' -> plocka bort från DOM-props
+
+const MD = {
+  h1: (p) => <h1 style={{ fontSize: 18, fontWeight: 800, color: T.ink, margin: '12px 0 6px' }} {...clean(p)} />,
+  h2: (p) => <h2 style={{ fontSize: 16, fontWeight: 800, color: T.ink, margin: '12px 0 6px' }} {...clean(p)} />,
+  h3: (p) => <h3 style={{ fontSize: 14.5, fontWeight: 800, color: T.ink, margin: '10px 0 5px' }} {...clean(p)} />,
+  h4: (p) => <h4 style={{ fontSize: 13.5, fontWeight: 800, color: T.ink, margin: '8px 0 4px' }} {...clean(p)} />,
+  p: (p) => <p style={{ margin: '6px 0', lineHeight: 1.55 }} {...clean(p)} />,
+  strong: (p) => <strong style={{ fontWeight: 800, color: T.ink }} {...clean(p)} />,
+  a: (p) => <a style={{ color: T.roseDeep, textDecoration: 'underline' }} target="_blank" rel="noreferrer" {...clean(p)} />,
+  ul: (p) => <ul style={{ margin: '6px 0', paddingLeft: 20 }} {...clean(p)} />,
+  ol: (p) => <ol style={{ margin: '6px 0', paddingLeft: 22 }} {...clean(p)} />,
+  li: (p) => <li style={{ margin: '3px 0', lineHeight: 1.5 }} {...clean(p)} />,
+  hr: () => <hr style={{ border: 'none', borderTop: `1px solid ${T.line}`, margin: '12px 0' }} />,
+  blockquote: (p) => <blockquote style={{
+    margin: '8px 0', padding: '6px 12px', borderLeft: `3px solid ${T.rose}`,
+    background: T.roseSoft + '66', borderRadius: '0 8px 8px 0', color: T.inkSoft,
+  }} {...clean(p)} />,
+  pre: (p) => <pre style={{
+    background: T.panelSoft, border: `1px solid ${T.line}`, borderRadius: 10, padding: '10px 12px',
+    overflowX: 'auto', fontSize: 12.5, lineHeight: 1.45, margin: '8px 0', fontFamily: MONO,
+  }} {...clean(p)} />,
+  code: ({ node, className, children, ...rest }) => {
+    const fenced = /language-/.test(className || '') || String(children).includes('\n')
+    if (fenced) return <code className={className} style={{ fontFamily: MONO }} {...rest}>{children}</code>
+    return <code style={{
+      fontFamily: MONO, fontSize: 12.5, background: T.panelSoft, border: `1px solid ${T.line}`,
+      borderRadius: 6, padding: '1px 5px',
+    }} {...rest}>{children}</code>
+  },
+  table: (p) => <div style={{ overflowX: 'auto', margin: '8px 0' }}>
+    <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }} {...clean(p)} />
+  </div>,
+  th: (p) => <th style={{ border: `1px solid ${T.line}`, background: T.panelSoft, padding: '6px 10px', textAlign: 'left', fontWeight: 800 }} {...clean(p)} />,
+  td: (p) => <td style={{ border: `1px solid ${T.line}`, padding: '6px 10px', verticalAlign: 'top' }} {...clean(p)} />,
+}
+
+function Markdown({ text }) {
   return (
-    <>
-      {parts.map((p, i) => (i % 2 === 1
-        ? <pre key={i} style={{
-            background: T.panelSoft, border: `1px solid ${T.line}`, borderRadius: 10, padding: '10px 12px',
-            overflowX: 'auto', fontSize: 12.5, lineHeight: 1.45, margin: '6px 0',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          }}>{p.replace(/^[a-zA-Z0-9+#.-]*\n/, '')}</pre>
-        : <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{p}</span>))}
-    </>
+    <div className="lm-md">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD}>{String(text || '')}</ReactMarkdown>
+    </div>
   )
 }
 
 /* ───────────────────────────── Forsknings-UI (under körning) ───────────────────────────── */
-const STEP_LABELS = ['Analys & arkitektur', 'Kodgenerering', 'Kvalitetsgranskning']
+const STEPS = [
+  { n: 1, label: 'Analys', glyph: '🧠' },
+  { n: 2, label: 'Kodgenerering', glyph: '⚙️' },
+  { n: 3, label: 'Granskning', glyph: '✨' },
+]
 
 function ResearchPanel({ live }) {
   const pct = Math.max(0, Math.min(100, Math.round(live.progress)))
   const thinkRef = useRef(null)
   // håll tänkande-rutan rullad till senaste tecknet (rinnande CoT)
   useEffect(() => { if (thinkRef.current) thinkRef.current.scrollTop = thinkRef.current.scrollHeight }, [live.thinking])
+  const step = live.step || 1
   return (
     <div style={{
-      margin: '14px 0', border: `1.5px solid ${T.rose}44`, borderRadius: 16, background: T.panel,
-      boxShadow: T.shadowSoft, overflow: 'hidden', animation: 'lm-pulse 1.8s ease-in-out infinite',
+      margin: '16px 0', borderRadius: 18, background: T.panel, overflow: 'hidden',
+      animation: 'lm-glow 2.4s ease-in-out infinite',
     }}>
-      {/* rubrik + steg */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px 8px' }}>
-        <span style={{ fontSize: 15 }}>🤖</span>
-        <span style={{ fontWeight: 800, fontSize: 13, color: T.ink }}>AI:n arbetar</span>
+      {/* vandrande gradient-accent i toppen */}
+      <div style={{
+        height: 4, background: `linear-gradient(90deg, ${T.rose}, ${T.roseDeep}, ${T.doing}, ${T.rose})`,
+        backgroundSize: '200% 100%', animation: 'lm-flow 3s linear infinite',
+      }} />
+
+      {/* rubrik + steg-piller + modell */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px 8px' }}>
+        <span style={{ fontSize: 16, animation: 'lm-pulse 1.4s ease-in-out infinite' }}>🤖</span>
+        <span style={{ fontWeight: 800, fontSize: 13.5, color: T.ink }}>AI:n arbetar</span>
         <Dots />
         <div style={{ flex: 1 }} />
         {live.model && <span style={{ fontSize: 11, color: T.inkSoft, background: T.panelSoft, borderRadius: 999, padding: '3px 9px', border: `1px solid ${T.line}` }}>{live.model}</span>}
       </div>
 
-      {/* framstegsindikator med tre etiketter */}
-      <div style={{ padding: '0 14px 6px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, fontWeight: 700, color: T.inkSoft, marginBottom: 5 }}>
-          {STEP_LABELS.map((l, i) => (
-            <span key={l} style={{ color: live.step >= i + 1 ? T.roseDeep : T.inkSoft }}>
-              {i + 1}. {l} {Math.round(((i + 1) / 3) * 100)}%
-            </span>
-          ))}
-        </div>
-        <div style={{ height: 8, borderRadius: 999, background: T.panelSoft, overflow: 'hidden' }}>
+      {/* steg-piller som fylls i takt med kedjan */}
+      <div style={{ display: 'flex', gap: 8, padding: '0 16px 10px' }}>
+        {STEPS.map((s) => {
+          const done = step > s.n
+          const active = step === s.n
+          return (
+            <div key={s.n} style={{
+              flex: 1, display: 'flex', alignItems: 'center', gap: 7, padding: '7px 10px', borderRadius: 11,
+              fontSize: 12, fontWeight: 800,
+              background: done ? T.doneSoft : active ? T.roseSoft : T.panelSoft,
+              color: done ? T.done : active ? T.roseDeep : T.inkSoft,
+              border: `1px solid ${done ? T.done + '55' : active ? T.rose + '66' : T.line}`,
+              animation: active ? 'lm-pulse 1.5s ease-in-out infinite' : 'none',
+            }}>
+              <span>{done ? '✓' : s.glyph}</span>
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.n}. {s.label}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* framstegsindikator */}
+      <div style={{ padding: '0 16px 10px' }}>
+        <div style={{ height: 9, borderRadius: 999, background: T.panelSoft, overflow: 'hidden' }}>
           <div style={{
             width: pct + '%', height: '100%', borderRadius: 999, transition: 'width .35s ease',
             background: `linear-gradient(90deg, ${T.rose}, ${T.roseDeep}, ${T.rose})`,
             backgroundSize: '200% 100%', animation: 'lm-shimmer 1.3s linear infinite',
           }} />
         </div>
-        <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 5, fontWeight: 700 }}>
-          Steg {live.step || 1}/3 · {live.label || STEP_LABELS[(live.step || 1) - 1]} · {pct}%
-        </div>
+        <div style={{ fontSize: 11, color: T.inkSoft, marginTop: 5, fontWeight: 700 }}>{pct}% · {live.label || STEPS[step - 1]?.label}</div>
       </div>
 
       {/* rullande tänkande-process (chain of thought) */}
       {live.thinking && (
-        <div style={{ padding: '6px 14px 10px' }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, marginBottom: 4, letterSpacing: 0.3, textTransform: 'uppercase' }}>Tänkande-process</div>
+        <div style={{ padding: '4px 16px 10px' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, marginBottom: 4, letterSpacing: 0.4, textTransform: 'uppercase' }}>💭 Tänkande-process</div>
           <div ref={thinkRef} style={{
             maxHeight: 150, overflowY: 'auto', background: T.panelSoft, border: `1px solid ${T.line}`,
             borderRadius: 10, padding: '9px 11px', fontSize: 12, lineHeight: 1.5, color: T.inkSoft,
-            whiteSpace: 'pre-wrap', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-          }}>{live.thinking}</div>
+            whiteSpace: 'pre-wrap', fontFamily: MONO,
+          }}>{live.thinking}<Caret /></div>
         </div>
       )}
 
-      {/* svaret medan det byggs (steg 3) */}
+      {/* svaret medan det byggs (steg 3), nu som riktig markdown + skrivande-markör */}
       {live.answer && (
-        <div style={{ padding: '0 14px 12px' }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, color: T.roseDeep, marginBottom: 4, letterSpacing: 0.3, textTransform: 'uppercase' }}>Svar (skrivs…)</div>
-          <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: '9px 11px', fontSize: 13.5, lineHeight: 1.5, color: T.ink }}>
-            <MessageText text={live.answer} />
+        <div style={{ padding: '0 16px 14px' }}>
+          <div style={{ fontSize: 10.5, fontWeight: 800, color: T.roseDeep, marginBottom: 4, letterSpacing: 0.4, textTransform: 'uppercase' }}>✨ Svar (skrivs…)</div>
+          <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 13px', fontSize: 13.5, lineHeight: 1.5, color: T.ink, boxShadow: T.shadowSoft }}>
+            <Markdown text={live.answer} /><Caret />
           </div>
         </div>
       )}
 
-      {live.error && <div style={{ padding: '0 14px 12px', fontSize: 12, color: T.roseDeep }}>{live.error}</div>}
+      {live.error && <div style={{ padding: '0 16px 12px', fontSize: 12, color: T.roseDeep }}>{live.error}</div>}
     </div>
   )
 }
@@ -309,6 +376,11 @@ function Dots() {
       ))}
     </span>
   )
+}
+
+// Blinkande textmarkör som ger känslan av att texten skrivs i realtid.
+function Caret() {
+  return <span style={{ display: 'inline-block', width: 7, height: 14, marginLeft: 1, background: T.rose, verticalAlign: 'text-bottom', borderRadius: 1, animation: 'lm-caret 1s steps(1) infinite' }} />
 }
 
 function fmtTime(iso) {
