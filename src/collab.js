@@ -27,6 +27,7 @@
  * modulen så att vyerna (App/Whiteboard/TaskEditor) inte behövde skrivas om.
  */
 import { supabase, supabaseEnabled } from './supabaseClient'
+import { canWrite, authStore } from './auth'
 import { PRESENCE_COLORS, DEFAULT_DIFFICULTY, STATUS, DIFF, CAT } from './theme'
 
 // --------------------------------------------------------------------------- config
@@ -217,6 +218,7 @@ function scheduleTextWrite(id, fields) {
 export function allTasks() { return [...tasks.values()] }
 
 export function createTask(fields = {}, id = null) {
+  if (!canWrite()) return null // redigering kräver inloggning (RLS skulle ändå neka); UI:t gate:ar också
   const tid = id || 't_' + rnd()
   const now = Date.now()
   const t = {
@@ -235,6 +237,7 @@ export function createTask(fields = {}, id = null) {
 }
 
 export function updateTask(id, patch) {
+  if (!canWrite()) return // ej inloggad: gör inget (annars optimistisk ändring som RLS sen nekar -> divergens)
   const cur = tasks.get(id)
   if (!cur) return
   const next = { ...cur, ...patch, updatedAt: Date.now(), updatedBy: identity.name || 'någon' }
@@ -258,6 +261,7 @@ export function updateTask(id, patch) {
 }
 
 export function deleteTask(id) {
+  if (!canWrite()) return // ej inloggad: radering kräver login
   clearTaskTimers(id)
   const dependents = []
   tasks.forEach((t) => {
@@ -538,43 +542,50 @@ async function init() {
 // --------------------------------------------------------------------------- safe first-run seeding
 /**
  * Seeda startinnehållet en gång, utan att återuppliva raderade kort:
- *   - lokalt läge: seeda bara om cachen är tom (in-memory-guard hindrar dubbelseed per session;
- *     ingen persistent flagga sätts, så DB:n kan fortfarande seedas när den blir tillgänglig).
- *   - DB-läge: DB-flaggan "seeded" finns -> gör inget; tom tabell -> seeda (upsert på stabila id:n,
- *     så två samtidiga seedare konvergerar); redan innehåll -> sätt bara flaggan.
+ *   - lokalt läge: seeda bara om cachen är tom.
+ *   - DB-läge: kräver inloggning (skriv = authenticated). DB-flaggan "seeded" finns -> gör inget;
+ *     tom tabell -> seeda (upsert på stabila id:n, så två samtidiga seedare konvergerar); redan
+ *     innehåll -> sätt bara flaggan. Är ingen inloggad än väntar vi: trySeed körs om vid login.
  */
-let seedAttempted = false
-export function maybeSeed(seedTasks) { ready.then(() => doSeed(seedTasks)) }
+let pendingSeed = null
+let seedDone = false
+let seedInFlight = false
+export function maybeSeed(seedTasks) { pendingSeed = seedTasks; ready.then(trySeed) }
+// Försök igen när någon loggar in (då först får vi skriva till DB:n).
+if (supabaseEnabled) authStore.subscribe(() => { if (canWrite()) ready.then(trySeed) })
 
-async function doSeed(seedTasks) {
-  if (seedAttempted) return
-  seedAttempted = true
-
-  if (!dbMode) {
-    if (tasks.size === 0) {
-      seedTasks.forEach((t, i) => {
-        const now = Date.now()
-        tasks.set(t.id, { ...defaults(), order: i + 1, ...t, id: t.id, createdBy: null, createdAt: now, updatedAt: now })
-      })
-      pushTasks(); saveCache()
-    }
-    return
-  }
-
+async function trySeed() {
+  if (seedDone || seedInFlight || !pendingSeed) return
+  seedInFlight = true
   try {
-    const { data: meta } = await supabase.from('board_meta').select('value').eq('key', 'seeded').maybeSingle()
-    if (meta && meta.value) return
-
-    const { count } = await supabase.from('board_tasks').select('id', { count: 'exact', head: true })
-    if ((count || 0) > 0) { // redan innehåll men ingen flagga -> sätt flagga, seeda ej
-      await supabase.from('board_meta').upsert({ key: 'seeded', value: true })
+    if (!dbMode) {
+      if (tasks.size === 0) {
+        pendingSeed.forEach((t, i) => {
+          const now = Date.now()
+          tasks.set(t.id, { ...defaults(), order: i + 1, ...t, id: t.id, createdBy: null, createdAt: now, updatedAt: now })
+        })
+        pushTasks(); saveCache()
+      }
+      seedDone = true
       return
     }
 
-    const rows = seedTasks.map((t, i) => taskToRow({ ...defaults(), order: i + 1, ...t, id: t.id, createdBy: null }))
+    const { data: meta } = await supabase.from('board_meta').select('value').eq('key', 'seeded').maybeSingle()
+    if (meta && meta.value) { seedDone = true; return }
+    const { count } = await supabase.from('board_tasks').select('id', { count: 'exact', head: true })
+    if ((count || 0) > 0) { // redan innehåll: sätt bara flaggan (kräver login) och sluta
+      if (canWrite()) await supabase.from('board_meta').upsert({ key: 'seeded', value: true })
+      seedDone = true
+      return
+    }
+
+    // Tom tabell: själva seedningen är en skrivning -> kräver inloggning. Vänta annars in login.
+    if (!canWrite()) return
+    const rows = pendingSeed.map((t, i) => taskToRow({ ...defaults(), order: i + 1, ...t, id: t.id, createdBy: null }))
     await supabase.from('board_tasks').upsert(rows)
     await supabase.from('board_meta').upsert({ key: 'seeded', value: true })
     rows.forEach((r) => { tasks.set(r.id, rowToTask(r)); markSynced(r.id) })
     pushTasks(); saveCache()
-  } catch (e) { console.warn('seed', e.message) }
+    seedDone = true
+  } catch (e) { console.warn('seed', e.message) } finally { seedInFlight = false }
 }

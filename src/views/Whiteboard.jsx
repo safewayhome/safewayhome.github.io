@@ -26,7 +26,7 @@ const CARD_GAP = 124 // vertikalt avstånd mellan kort
 const H_TARGET = { left: '50%', top: 0, transform: 'translate(-50%,-50%)', width: 1, height: 1, opacity: 0, border: 'none', background: 'transparent', pointerEvents: 'none' }
 const H_SOURCE = { left: '50%', top: '100%', transform: 'translate(-50%,-50%)', width: 1, height: 1, opacity: 0, border: 'none', background: 'transparent', pointerEvents: 'none' }
 
-function buildNodes(allTasks, visibleTasks, lanes, onAddCard) {
+function buildNodes(allTasks, visibleTasks, lanes, onAddCard, canEdit, onRequireLogin) {
   // synliga uppgifter grupperade per kategori, i ordningsföljd. Deterministisk tiebreaker
   // (createdAt, sedan id) så att två kort skapade samtidigt med samma order hamnar lika hos alla.
   const byCat = {}
@@ -44,7 +44,7 @@ function buildNodes(allTasks, visibleTasks, lanes, onAddCard) {
     const laneX = li * LANE_W
     nodes.push({
       id: 'lane-' + c.key, type: 'lane', position: { x: laneX, y: HEADER_Y },
-      data: { cat: c, prog: catProg[c.key], onAdd: () => onAddCard(c.key) },
+      data: { cat: c, prog: catProg[c.key], onAdd: () => onAddCard(c.key), canEdit },
       draggable: false, selectable: false,
     })
     // eget löpnummer enbart för oplacerade kort → de staplas tätt även i kolumner som
@@ -53,7 +53,7 @@ function buildNodes(allTasks, visibleTasks, lanes, onAddCard) {
     ;(byCat[c.key] || []).forEach((t) => {
       const placed = t.x != null && t.y != null
       const pos = placed ? { x: t.x, y: t.y } : { x: laneX, y: CARD_TOP + (flowIdx++) * CARD_GAP }
-      nodes.push({ id: t.id, type: 'task', position: pos, data: { task: t } })
+      nodes.push({ id: t.id, type: 'task', position: pos, data: { task: t, canEdit, onRequireLogin } })
     })
   })
   return nodes
@@ -171,8 +171,8 @@ function TaskNode({ data }) {
           <div style={{ flex: 1 }} />
           <button
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); updateTask(t.id, { status: NEXT_STATUS[t.status] || 'doing' }) }}
-            title={`Status: ${s.label} · klicka för att ändra`}
+            onClick={(e) => { e.stopPropagation(); if (data.canEdit) updateTask(t.id, { status: NEXT_STATUS[t.status] || 'doing' }); else data.onRequireLogin?.() }}
+            title={data.canEdit ? `Status: ${s.label} · klicka för att ändra` : `Status: ${s.label} · logga in för att ändra`}
             className="nodrag"
             style={{ border: 'none', background: 'transparent', padding: 0, width: 16, height: 16, display: 'grid', placeItems: 'center' }}
           >
@@ -211,17 +211,19 @@ function LaneNode({ data }) {
         <span style={{ fontSize: 18 }}>{c.glyph}</span>
         <span style={{ fontSize: 14, fontWeight: 900, color: c.color }}>{c.label}</span>
         <div style={{ flex: 1 }} />
-        <button
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); data.onAdd && data.onAdd() }}
-          title={`Lägg till kort i ${c.label}`}
-          className="nodrag"
-          style={{
-            border: 'none', background: c.color, color: '#fff', fontWeight: 900, fontSize: 15,
-            width: 26, height: 26, borderRadius: 9, display: 'grid', placeItems: 'center', lineHeight: 1,
-            boxShadow: T.shadowSoft,
-          }}
-        >＋</button>
+        {data.canEdit && (
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); data.onAdd && data.onAdd() }}
+            title={`Lägg till kort i ${c.label}`}
+            className="nodrag"
+            style={{
+              border: 'none', background: c.color, color: '#fff', fontWeight: 900, fontSize: 15,
+              width: 26, height: 26, borderRadius: 9, display: 'grid', placeItems: 'center', lineHeight: 1,
+              boxShadow: T.shadowSoft,
+            }}
+          >＋</button>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 9 }}>
         <div style={{ flex: 1, height: 6, borderRadius: 999, background: '#ffffff90', overflow: 'hidden' }}>
@@ -270,7 +272,7 @@ function CursorsLayer() {
 }
 
 /* ───────────────────────────── flow ───────────────────────────── */
-function Flow({ tasks, visibleTasks, cats, onOpenTask, paused }) {
+function Flow({ tasks, visibleTasks, cats, onOpenTask, paused, canEdit, onRequireLogin }) {
   const rf = useReactFlow()
   const [nodes, setNodes] = useNodesState([])
   const [hoveredId, setHoveredId] = useState(null) // kortet musen är över → lyser upp dess kopplingar
@@ -280,15 +282,19 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused }) {
   // varje tangenttryck i fritextfälten; tavlan ritas om när editorn stängs.
   const pausedRef = useRef(paused)
   pausedRef.current = paused
+  // canEdit (inloggad?) speglas i ref så drag-stop/återuppbyggnad ser rätt värde utan dep-churn
+  const canEditRef = useRef(canEdit); canEditRef.current = canEdit
+  const onRequireLoginRef = useRef(onRequireLogin); onRequireLoginRef.current = onRequireLogin
 
   // synliga kolumner = de team-kategorier som är påslagna i toppfiltret
   const lanes = useMemo(() => CATEGORIES.filter((c) => !cats || cats[c.key]), [cats])
 
   // lägg ett nytt kort i en kolumn (utan x/y → det flödar in sist i kolumnen) och öppna det
   const onAddCard = useCallback((catKey) => {
+    if (!canEdit) { onRequireLogin?.(); return } // ej inloggad: be om login i stället
     const id = createTask({ category: catKey, title: 'Ny uppgift' })
-    onOpenTask(id)
-  }, [onOpenTask])
+    if (id) onOpenTask(id)
+  }, [onOpenTask, canEdit, onRequireLogin])
 
   // håll refs till senaste store-data så onNodeDragStop kan bygga om med det som hann anlända
   // (fjärr-redigeringar) medan ett drag pågick
@@ -302,13 +308,13 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused }) {
   // bygg om noderna från store, men klottra aldrig över ett pågående drag eller medan editorn är öppen
   useEffect(() => {
     if (draggingRef.current || pausedRef.current) return
-    setNodes(buildNodes(tasks, visibleTasks, lanes, onAddCard))
-  }, [tasks, visibleTasks, lanes, onAddCard, setNodes])
+    setNodes(buildNodes(tasks, visibleTasks, lanes, onAddCard, canEdit, onRequireLogin))
+  }, [tasks, visibleTasks, lanes, onAddCard, setNodes, canEdit, onRequireLogin])
 
   // när editorn stängs (paused -> false): bygg om en gång med det senaste storeläget
   useEffect(() => {
     if (paused || draggingRef.current) return
-    setNodes(buildNodes(tasksRef.current, visRef.current, lanesRef.current, onAddCard))
+    setNodes(buildNodes(tasksRef.current, visRef.current, lanesRef.current, onAddCard, canEditRef.current, onRequireLoginRef.current))
   }, [paused, onAddCard, setNodes])
 
   // rensa vår muspekare när tavlan avmonteras (t.ex. byte till Timeline/Progress)
@@ -329,7 +335,7 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused }) {
     const patch = (arr) => (node.type === 'task'
       ? arr.map((t) => (t.id === node.id ? { ...t, x: px, y: py } : t))
       : arr)
-    setNodes(buildNodes(patch(tasksRef.current), patch(visRef.current), lanesRef.current, onAddCard))
+    setNodes(buildNodes(patch(tasksRef.current), patch(visRef.current), lanesRef.current, onAddCard, canEditRef.current, onRequireLoginRef.current))
   }, [setNodes, onAddCard])
 
   const onNodeClick = useCallback((_e, node) => {
@@ -352,11 +358,12 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused }) {
   // dubbelklick på tom yta → nytt kort just där, i närmaste kolumns kategori
   const onDoubleClick = useCallback((e) => {
     if (!e.target.classList?.contains('react-flow__pane') || !toFlow) return
+    if (!canEditRef.current) { onRequireLoginRef.current?.(); return } // ej inloggad: be om login
     const p = toFlow({ x: e.clientX, y: e.clientY })
     const ln = lanesRef.current.length ? lanesRef.current : CATEGORIES
     const li = Math.max(0, Math.min(ln.length - 1, Math.round(p.x / LANE_W)))
     const id = createTask({ category: ln[li].key, x: Math.round(p.x), y: Math.round(p.y), title: 'Ny uppgift' })
-    onOpenTask(id)
+    if (id) onOpenTask(id)
   }, [toFlow, onOpenTask])
 
   const resetLayout = useCallback(() => {
@@ -376,7 +383,7 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused }) {
         onNodeMouseEnter={onNodeMouseEnter} onNodeMouseLeave={onNodeMouseLeave}
         fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.2} maxZoom={1.8}
         proOptions={{ hideAttribution: false }} nodesConnectable={false} elementsSelectable
-        zoomOnDoubleClick={false}
+        nodesDraggable={canEdit} zoomOnDoubleClick={false}
         style={{ background: T.bg }}
       >
         <Background color={T.line} gap={26} size={1.5} />

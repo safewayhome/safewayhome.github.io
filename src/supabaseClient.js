@@ -18,12 +18,15 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Ablx00EBgs
 export const supabaseEnabled = Boolean(url && key)
 export const SUPABASE_URL = url
 
-// Ingen auth-session behövs (boarden använder inte login): vi stänger av session-persistens
-// och URL-tolkning så klienten håller sig till data + realtime. realtime-takten höjs lite
-// så muspekar-broadcasts inte stryps.
+// Boarden har nu en inloggning (redigering kräver login, se auth.js): vi behåller därför sessionen
+// över reload och förnyar token i bakgrunden, annars ramlar man ur redigeringsläget. Supabase-js
+// fäster automatiskt den inloggades JWT på både PostgREST- och realtime-anrop, så RLS-policyn
+// "skriv kräver authenticated" börjar gälla så fort man loggat in. detectSessionInUrl=false: vi
+// använder inte magic-link/OAuth-redirect, bara email+lösen. realtime-takten höjs lite så
+// muspekar-broadcasts inte stryps.
 export const supabase = supabaseEnabled
   ? createClient(url, key, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       realtime: { params: { eventsPerSecond: 30 } },
     })
   : null

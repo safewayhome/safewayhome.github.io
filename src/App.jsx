@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { T, CATEGORIES, PRESENCE_COLORS } from './theme'
-import { useTasks, usePeople, useConnection } from './store'
+import { useTasks, usePeople, useConnection, useAuth } from './store'
 import {
   identity, setIdentity, createTask, maybeSeed, clearCursor, allTasks, BOARD_ID,
 } from './collab'
+import { signIn, signUp, signOut } from './auth'
 import { SEED } from './seed'
 import Whiteboard from './views/Whiteboard.jsx'
 import Timeline from './views/Timeline.jsx'
@@ -41,7 +42,10 @@ export default function App() {
   const tasks = useTasks()
   const people = usePeople()
   const conn = useConnection()
+  const auth = useAuth()
+  const canEdit = !!auth.user // redigering kräver inloggning (RLS: skriv = authenticated)
 
+  const [showLogin, setShowLogin] = useState(false)
   const [view, setView] = usePersistentState('lm.view', 'board')
   const [cats, setCats] = usePersistentState(
     'lm.filter.cats',
@@ -85,9 +89,10 @@ export default function App() {
     setHiddenSubs((h) => (h.includes(id) ? h.filter((x) => x !== id) : [...h, id]))
   }
   function addTask() {
+    if (!canEdit) { setShowLogin(true); return } // ej inloggad: be om login i stället för att skapa
     const firstVisibleCat = CATEGORIES.find((c) => cats[c.key])?.key || 'dev'
     const id = createTask({ category: firstVisibleCat, title: 'Ny uppgift' })
-    setEditingId(id)
+    if (id) setEditingId(id)
   }
 
   // press "n" to add a task (when not typing in a field / modal)
@@ -96,13 +101,13 @@ export default function App() {
       if (e.key !== 'n' || e.metaKey || e.ctrlKey || e.altKey) return
       const el = document.activeElement
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
-      if (showName || showSettings || editingId) return
+      if (showName || showSettings || editingId || !canEdit) return
       e.preventDefault()
       addTask()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [showName, showSettings, editingId, cats])
+  }, [showName, showSettings, editingId, cats, canEdit])
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
@@ -115,11 +120,13 @@ export default function App() {
         onAdd={addTask}
         onName={() => setShowName(true)}
         onSettings={() => setShowSettings(true)}
+        canEdit={canEdit} email={auth.user?.email}
+        onLogin={() => setShowLogin(true)} onLogout={signOut}
       />
 
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {view === 'board' && (
-          <Whiteboard tasks={tasks} visibleTasks={visibleTasks} cats={cats} onOpenTask={setEditingId} paused={!!editingId} />
+          <Whiteboard tasks={tasks} visibleTasks={visibleTasks} cats={cats} onOpenTask={setEditingId} paused={!!editingId} canEdit={canEdit} onRequireLogin={() => setShowLogin(true)} />
         )}
         {view === 'timeline' && (
           <Timeline tasks={tasks} visibleTasks={visibleTasks} onOpenTask={setEditingId} />
@@ -136,7 +143,10 @@ export default function App() {
       </div>
 
       {editing && (
-        <TaskEditor task={editing} allTasks={tasks} onClose={() => setEditingId(null)} />
+        <TaskEditor task={editing} allTasks={tasks} onClose={() => setEditingId(null)} canEdit={canEdit} onRequireLogin={() => setShowLogin(true)} />
+      )}
+      {showLogin && (
+        <LoginModal onClose={() => setShowLogin(false)} />
       )}
       {showName && (
         <NameModal
@@ -157,6 +167,7 @@ function TopBar(props) {
   const {
     view, setView, cats, toggleCat, catStats, filterOpen, setFilterOpen,
     hiddenSubSet, toggleSub, people, conn, onAdd, onName, onSettings,
+    canEdit, email, onLogin, onLogout,
   } = props
   return (
     <header style={{
@@ -224,16 +235,17 @@ function TopBar(props) {
 
       <ConnChip conn={conn} />
       <PresenceBar people={people} onName={onName} />
+      <AuthChip canEdit={canEdit} email={email} onLogin={onLogin} onLogout={onLogout} />
 
       <a href="/app/" title="Öppna säkerhetsappen" style={{
         textDecoration: 'none', border: `1px solid ${T.line}`, background: T.panel, color: T.ink,
         fontWeight: 800, fontSize: 13, padding: '8px 12px', borderRadius: 11,
         display: 'inline-flex', alignItems: 'center', gap: 6,
       }}>🛡️ Appen ↗</a>
-      <button onClick={onAdd} style={{
-        border: 'none', background: T.rose, color: '#fff', fontWeight: 800, fontSize: 13.5,
+      <button onClick={onAdd} title={canEdit ? 'Nytt kort (n)' : 'Logga in för att lägga till kort'} style={{
+        border: 'none', background: canEdit ? T.rose : T.todo, color: '#fff', fontWeight: 800, fontSize: 13.5,
         padding: '9px 14px', borderRadius: 11, boxShadow: T.shadowSoft,
-      }}>＋ Uppgift</button>
+      }}>{canEdit ? '＋ Uppgift' : '🔒 Uppgift'}</button>
       <button onClick={onSettings} title="Inställningar" style={{
         border: `1px solid ${T.line}`, background: T.panel, borderRadius: 10, padding: '8px 10px', fontSize: 15,
       }}>⚙️</button>
@@ -315,6 +327,29 @@ function PresenceBar({ people, onName }) {
   )
 }
 
+// Inloggad: visa vem + logga ut. Utloggad: en "Logga in"-knapp (redigering kräver konto).
+function AuthChip({ canEdit, email, onLogin, onLogout }) {
+  if (canEdit) {
+    const short = (email || '').split('@')[0]
+    return (
+      <div title={email} style={{
+        display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', borderRadius: 999,
+        background: T.doneSoft, border: `1px solid ${T.done}55`, fontWeight: 700, fontSize: 12.5, color: T.ink,
+      }}>
+        <span style={{ width: 8, height: 8, borderRadius: 999, background: T.done }} />
+        <span style={{ maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{short}</span>
+        <button onClick={onLogout} title="Logga ut" style={{ border: 'none', background: 'transparent', color: T.inkSoft, fontWeight: 800, fontSize: 12, cursor: 'pointer', padding: 0 }}>logga ut</button>
+      </div>
+    )
+  }
+  return (
+    <button onClick={onLogin} title="Logga in för att redigera tavlan" style={{
+      display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 999,
+      border: `1.5px solid ${T.line}`, background: T.panel, color: T.ink, fontWeight: 800, fontSize: 12.5, cursor: 'pointer',
+    }}>🔒 Logga in</button>
+  )
+}
+
 /* ───────────────────────────── Modals ───────────────────────────── */
 function ModalShell({ children, onClose, width = 420 }) {
   return (
@@ -357,6 +392,44 @@ function NameModal({ onSave, canCancel, onCancel }) {
     </ModalShell>
   )
 }
+
+function LoginModal({ onClose }) {
+  const [mode, setMode] = useState('in') // 'in' = logga in, 'up' = skapa konto
+  const [email, setEmail] = useState('')
+  const [pwd, setPwd] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function submit() {
+    if (!email.trim() || !pwd || busy) return
+    setBusy(true); setErr('')
+    const { error } = mode === 'in' ? await signIn(email, pwd) : await signUp(email, pwd)
+    setBusy(false)
+    if (error) { setErr(error.message || 'Något gick fel'); return }
+    onClose()
+  }
+  return (
+    <ModalShell onClose={onClose}>
+      <div style={{ fontWeight: 800, fontSize: 18, color: T.ink, marginBottom: 4 }}>{mode === 'in' ? 'Logga in' : 'Skapa konto'}</div>
+      <div style={{ fontSize: 13, color: T.inkSoft, marginBottom: 16 }}>
+        Bara inloggade i teamet kan redigera tavlan. Andra kan fortfarande titta.
+      </div>
+      <input autoFocus type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-post"
+        onKeyDown={(e) => e.key === 'Enter' && submit()} style={loginInp} />
+      <input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder="Lösenord"
+        onKeyDown={(e) => e.key === 'Enter' && submit()} style={{ ...loginInp, marginBottom: err ? 6 : 16 }} />
+      {err && <div style={{ fontSize: 12.5, color: T.roseDeep, marginBottom: 12 }}>{err}</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
+        <button onClick={() => { setMode(mode === 'in' ? 'up' : 'in'); setErr('') }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12.5, fontWeight: 700, color: T.inkSoft, padding: 0 }}>
+          {mode === 'in' ? 'Inget konto? Skapa ett' : 'Har redan konto? Logga in'}
+        </button>
+        <button disabled={busy || !email.trim() || !pwd} onClick={submit} style={{ ...btnPrimary, opacity: (busy || !email.trim() || !pwd) ? 0.5 : 1 }}>
+          {busy ? '…' : (mode === 'in' ? 'Logga in' : 'Skapa konto')}
+        </button>
+      </div>
+    </ModalShell>
+  )
+}
+const loginInp = { width: '100%', padding: '11px 13px', borderRadius: 11, border: `1.5px solid ${T.line}`, fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }
 
 function SettingsModal({ onClose }) {
   const isCustom = BOARD_ID !== 'ledmig-team-v1'

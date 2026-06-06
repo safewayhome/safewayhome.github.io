@@ -14,7 +14,7 @@ const seedDraft = (t) => ({
   approach: t.approach ?? '',
 })
 
-export default function TaskEditor({ task, allTasks, onClose }) {
+export default function TaskEditor({ task, allTasks, onClose, canEdit = true, onRequireLogin }) {
   const people = usePeople()
   const [draft, setDraft] = useState(() => seedDraft(task))
   const [activity, setActivity] = useState(() => getActivity(task.id))
@@ -36,14 +36,17 @@ export default function TaskEditor({ task, allTasks, onClose }) {
   }, [task.id])
 
   const cat = CAT[task.category] || CATEGORIES[0]
-  const commit = (patch) => updateTask(task.id, patch)
+  // Ej inloggad: editorn är skrivskyddad. commit/onText blir no-ops (updateTask nekar ändå via RLS),
+  // och fälten renderas disabled så det syns att man måste logga in för att ändra.
+  const commit = (patch) => { if (canEdit) updateTask(task.id, patch) }
   const deps = task.deps || []
   const othersEditing = people.filter((p) => p.editing === task.id && p.user)
 
   const curDiff = diffKey(task)
 
-  // text field: keep raw in draft, mirror to Yjs live
+  // text field: keep raw in draft, spegla till DB live (no-op om man inte är inloggad)
   const onText = (key, raw) => {
+    if (!canEdit) return
     setDraft((d) => ({ ...d, [key]: raw }))
     pingTyping()
     commit({ [key]: raw })
@@ -73,9 +76,16 @@ export default function TaskEditor({ task, allTasks, onClose }) {
 
         {/* body */}
         <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
+          {!canEdit && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 11, background: T.roseSoft, border: `1px solid ${T.rose}55`, marginBottom: 14 }}>
+              <span style={{ fontSize: 16 }}>🔒</span>
+              <div style={{ flex: 1, fontSize: 12.5, color: T.ink, fontWeight: 700 }}>Skrivskyddat: logga in för att redigera kortet.</div>
+              <button onClick={() => { onRequireLogin?.(); onClose() }} style={{ border: 'none', background: T.rose, color: '#fff', fontWeight: 800, fontSize: 12.5, padding: '7px 12px', borderRadius: 10, cursor: 'pointer' }}>Logga in</button>
+            </div>
+          )}
           {/* NOTE: task/presence fields are peer-supplied — render only as React text (never dangerouslySetInnerHTML). */}
           <textarea
-            value={draft.title} onChange={(e) => onText('title', e.target.value)} rows={2}
+            value={draft.title} onChange={(e) => onText('title', e.target.value)} rows={2} disabled={!canEdit}
             placeholder="Titel" style={{ ...inp, fontSize: 18, fontWeight: 800, resize: 'none', marginBottom: 14 }}
           />
 
@@ -83,7 +93,7 @@ export default function TaskEditor({ task, allTasks, onClose }) {
           <Label>Status</Label>
           <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
             {Object.entries(STATUS).map(([key, s]) => (
-              <button key={key} onClick={() => commit({ status: key })} style={{
+              <button key={key} onClick={() => commit({ status: key })} disabled={!canEdit} style={{
                 flex: 1, padding: '8px 0', borderRadius: 10, fontWeight: 800, fontSize: 13,
                 border: `1.5px solid ${task.status === key ? s.color : T.line}`,
                 background: task.status === key ? s.color + '22' : T.panel,
@@ -96,13 +106,13 @@ export default function TaskEditor({ task, allTasks, onClose }) {
           <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
               <Label>Kategori</Label>
-              <select value={task.category} onChange={(e) => commit({ category: e.target.value, sub: '' })} style={inp}>
+              <select value={task.category} onChange={(e) => commit({ category: e.target.value, sub: '' })} disabled={!canEdit} style={inp}>
                 {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.glyph} {c.label}</option>)}
               </select>
             </div>
             <div style={{ flex: 1 }}>
               <Label>Underkategori</Label>
-              <select value={task.sub || ''} onChange={(e) => commit({ sub: e.target.value })} style={inp}>
+              <select value={task.sub || ''} onChange={(e) => commit({ sub: e.target.value })} disabled={!canEdit} style={inp}>
                 <option value="">—</option>
                 {cat.subs.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -115,7 +125,7 @@ export default function TaskEditor({ task, allTasks, onClose }) {
             {DIFFICULTIES.map((d) => {
               const on = curDiff === d.key
               return (
-                <button key={d.key} onClick={() => commit({ difficulty: d.key })} title={d.label} style={{
+                <button key={d.key} onClick={() => commit({ difficulty: d.key })} disabled={!canEdit} title={d.label} style={{
                   flex: 1, padding: '8px 4px', borderRadius: 10, fontWeight: 800, fontSize: 12,
                   border: `1.5px solid ${on ? d.color : T.line}`,
                   background: on ? d.color + '22' : T.panel,
@@ -130,11 +140,11 @@ export default function TaskEditor({ task, allTasks, onClose }) {
           </div>
 
           <Label>Vad ska göras (beskrivning)</Label>
-          <textarea value={draft.description} onChange={(e) => onText('description', e.target.value)} rows={3}
+          <textarea value={draft.description} onChange={(e) => onText('description', e.target.value)} rows={3} disabled={!canEdit}
             placeholder="Koncist: vad uppgiften innebär." style={{ ...inp, marginBottom: 16, resize: 'vertical' }} />
 
           <Label>Hur vi tänker lösa det (om vi har ett hum)</Label>
-          <textarea value={draft.approach} onChange={(e) => onText('approach', e.target.value)} rows={3}
+          <textarea value={draft.approach} onChange={(e) => onText('approach', e.target.value)} rows={3} disabled={!canEdit}
             placeholder="Översiktlig lösningsidé / verktyg." style={{ ...inp, marginBottom: 16, resize: 'vertical' }} />
 
           <Label>Beror på (ritas som pilar mellan korten i Nätet)</Label>
@@ -146,7 +156,7 @@ export default function TaskEditor({ task, allTasks, onClose }) {
               const on = deps.includes(t.id)
               return (
                 <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 4px', cursor: 'pointer', fontSize: 12.5 }}>
-                  <input type="checkbox" checked={on} onChange={() => commit({ deps: on ? deps.filter((d) => d !== t.id) : [...deps, t.id] })} />
+                  <input type="checkbox" checked={on} disabled={!canEdit} onChange={() => commit({ deps: on ? deps.filter((d) => d !== t.id) : [...deps, t.id] })} />
                   <span style={{ width: 8, height: 8, borderRadius: 3, background: (CAT[t.category] || {}).color || T.todo }} />
                   <span style={{ color: T.ink }}>{t.title}</span>
                 </label>
@@ -184,10 +194,12 @@ export default function TaskEditor({ task, allTasks, onClose }) {
           <div style={{ fontSize: 11.5, color: T.inkSoft, flex: 1 }}>
             {task.updatedBy ? `Senast ${ago(task.updatedAt)} · ${task.updatedBy}` : ''}
           </div>
-          <button onClick={() => { if (confirm('Ta bort uppgiften?')) { deleteTask(task.id); onClose() } }} style={{
-            border: `1.5px solid ${T.roseSoft}`, background: T.roseSoft, color: T.roseDeep, fontWeight: 800,
-            fontSize: 13, padding: '9px 14px', borderRadius: 11,
-          }}>Ta bort</button>
+          {canEdit && (
+            <button onClick={() => { if (confirm('Ta bort uppgiften?')) { deleteTask(task.id); onClose() } }} style={{
+              border: `1.5px solid ${T.roseSoft}`, background: T.roseSoft, color: T.roseDeep, fontWeight: 800,
+              fontSize: 13, padding: '9px 14px', borderRadius: 11,
+            }}>Ta bort</button>
+          )}
           <button onClick={onClose} style={{ border: 'none', background: T.rose, color: '#fff', fontWeight: 800, fontSize: 13, padding: '9px 16px', borderRadius: 11 }}>Klar</button>
         </div>
       </aside>

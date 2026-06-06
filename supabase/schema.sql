@@ -9,10 +9,12 @@
 --   board_meta      : små nyckel/värde-flaggor (t.ex. "seeded" så seed inte återuppstår).
 -- Plus Row Level Security (RLS) och Realtime så att en ändring direkt syns hos alla.
 --
--- SÄKERHETSMODELL: anon-nyckeln ligger i den publika bundlen, så policyerna nedan släpper
--- in vem som helst som har nyckeln (= alla som hittar sajten). Det matchar dagens "intern men
--- inte hemlig"-läge. Vill ni låsa till inloggade konton: byt "to anon, authenticated" mot
--- "to authenticated" i policyerna (kräver att team-boarden loggar in via Supabase Auth).
+-- SÄKERHETSMODELL: LÄSNING är öppen (vem som helst kan se tavlan/changelog/data), men ÄNDRINGAR
+-- (skapa/flytta/redigera/radera kort) kräver att man är INLOGGAD (to authenticated). Tavlan har en
+-- Supabase-inloggning (email+lösen); utomstående utan konto kan alltså titta men inte kladda.
+-- OBS: Supabase tillåter öppen registrering, så "authenticated" = vem som helst som skapat ett konto.
+-- Vill ni låsa till ENBART era tre mejl: lägg till ett villkor i write-policyerna, t.ex.
+--   with check (auth.jwt()->>'email' in ('a@x.se','b@x.se','c@x.se'))  (säg till så fixar jag det).
 
 -- ── tasks ──────────────────────────────────────────────────────────────────
 create table if not exists public.board_tasks (
@@ -59,26 +61,33 @@ create table if not exists public.board_meta (
 );
 
 -- ── Row Level Security ──────────────────────────────────────────────────────
--- Slå på RLS och tillåt full åtkomst för anon (publik nyckel) + inloggade. Se säkerhetsnoten ovan.
+-- Slå på RLS. LÄS: anon + authenticated. SKRIV: bara authenticated (inloggade). Se säkerhetsnoten ovan.
 alter table public.board_tasks    enable row level security;
 alter table public.board_activity enable row level security;
 alter table public.board_meta     enable row level security;
 
-do $$
-begin
-  -- board_tasks
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='board_tasks' and policyname='board_tasks_all') then
-    create policy board_tasks_all on public.board_tasks for all to anon, authenticated using (true) with check (true);
-  end if;
-  -- board_activity
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='board_activity' and policyname='board_activity_all') then
-    create policy board_activity_all on public.board_activity for all to anon, authenticated using (true) with check (true);
-  end if;
-  -- board_meta
-  if not exists (select 1 from pg_policies where schemaname='public' and tablename='board_meta' and policyname='board_meta_all') then
-    create policy board_meta_all on public.board_meta for all to anon, authenticated using (true) with check (true);
-  end if;
-end $$;
+-- Idempotent: släpp ev. gamla/öppna policys och (åter)skapa de uppdelade läs/skriv-policyerna.
+drop policy if exists board_tasks_all      on public.board_tasks;
+drop policy if exists board_tasks_read     on public.board_tasks;
+drop policy if exists board_tasks_write    on public.board_tasks;
+drop policy if exists board_activity_all    on public.board_activity;
+drop policy if exists board_activity_read   on public.board_activity;
+drop policy if exists board_activity_insert on public.board_activity;
+drop policy if exists board_meta_all   on public.board_meta;
+drop policy if exists board_meta_read  on public.board_meta;
+drop policy if exists board_meta_write on public.board_meta;
+
+-- board_tasks: alla får läsa, bara inloggade får skapa/ändra/radera.
+create policy board_tasks_read  on public.board_tasks for select to anon, authenticated using (true);
+create policy board_tasks_write on public.board_tasks for all    to authenticated using (true) with check (true);
+
+-- board_activity: alla får läsa historiken, bara inloggade får skriva nya rader.
+create policy board_activity_read   on public.board_activity for select to anon, authenticated using (true);
+create policy board_activity_insert on public.board_activity for insert to authenticated with check (true);
+
+-- board_meta: alla får läsa, bara inloggade får skriva (seed-flaggan m.m.).
+create policy board_meta_read  on public.board_meta for select to anon, authenticated using (true);
+create policy board_meta_write on public.board_meta for all    to authenticated using (true) with check (true);
 
 -- ── Realtime ────────────────────────────────────────────────────────────────
 -- Lägg tabellerna i Supabase Realtime-publikationen så postgres_changes broadcastar
