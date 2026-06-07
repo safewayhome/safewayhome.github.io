@@ -179,13 +179,19 @@ export default function Progress({ tasks, visibleTasks }) {
   // hela summan (partial=false) -> ingen hint, siffran visas som färdig.
   const linesPending = !!(gh && (gh.computing || (gh.source === 'commits' && gh.partial)))
 
-  // Avklarade uppgifter per utvecklare, grupperade på svårighetsgrad (tavlans kort). En "done"-uppgift
-  // tillskrivs den som senast rörde den (updatedBy), matchat mot utvecklarnamnet (skiftlägesokänsligt).
-  // Detta ger korten "hur många Enkla/Medel/Svåra/Extremt svåra man klarat", färgat enligt kategoriseringen.
-  const doneByDiff = useMemo(() => {
+  // Antal bidrag per utvecklare och svårighetsgrad (hur många Enkla/Medel/Svåra/Extremt svåra man gjort).
+  // Vi räknar utvecklarens COMMITS (klassificerade ovan) PLUS ev. avklarade tavlekort som tillskrivits hen.
+  // Commits är ALLTID tillskrivna (GitHub-författare), medan tavlekorten oftast saknar person-attribution
+  // (seedade / "någon"), så commit-baset gör att fördelningen faktiskt fylls i och blir meningsfull.
+  const diffByDev = useMemo(() => {
     const names = DEV_PLACEHOLDER.map((d) => d.name)
     const m = {}
-    for (const t of (tasks || [])) {
+    for (const c of commitsWithDiff) {                    // commits per utvecklare, per klassad svårighet
+      if (!c.author) continue
+      const bucket = (m[c.author] = m[c.author] || {})
+      bucket[c._diff] = (bucket[c._diff] || 0) + 1
+    }
+    for (const t of (tasks || [])) {                      // + avklarade tavlekort om de tillskrivits en dev
       if (t.status !== 'done') continue
       const who = String(t.updatedBy || (t.createdBy && t.createdBy.name) || '').toLowerCase()
       const name = names.find((n) => who.includes(n.toLowerCase()))
@@ -195,7 +201,7 @@ export default function Progress({ tasks, visibleTasks }) {
       bucket[k] = (bucket[k] || 0) + 1
     }
     return m
-  }, [tasks])
+  }, [commitsWithDiff, tasks])
 
   return (
     <div style={{ height: '100%', overflow: 'auto', background: T.bg }}>
@@ -287,16 +293,16 @@ export default function Progress({ tasks, visibleTasks }) {
                   {fmtInt(dev.commits)} commits : <span style={{ color: T.roseDeep }}>{fmtInt(dev.net_lines)} rader kod implementerat</span>
                   {linesPending ? <span style={{ marginLeft: 8, fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>(rader beräknas…)</span> : null}
                 </div>
-                {/* Avklarade uppgifter per svårighetsgrad (tavlans kategorisering), färgkodat: hur många
-                    Enkla/Medel/Svåra/Extremt svåra den här utvecklaren har klarat. */}
+                {/* Bidrag per svårighetsgrad (tavlans kategorisering), färgkodat: hur många
+                    Enkla/Medel/Svåra/Extremt svåra den här utvecklaren har gjort (commits + ev. tavlekort). */}
                 {(() => {
-                  const bd = doneByDiff[dev.name] || {}
+                  const bd = diffByDev[dev.name] || {}
                   const total = DIFFICULTIES.reduce((s, d) => s + (bd[d.key] || 0), 0)
                   return (
                     <div style={{ marginTop: 9, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                      <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>Avklarat:</span>
+                      <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>Per svårighetsgrad:</span>
                       {total === 0
-                        ? <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>inga uppgifter ännu</span>
+                        ? <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>inga bidrag ännu</span>
                         : DIFFICULTIES.filter((d) => bd[d.key]).map((d) => (
                             <span key={d.key} title={d.label} style={{
                               display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800,
