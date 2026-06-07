@@ -383,16 +383,34 @@ function Bubble({ m, mine }) {
           ...surface, borderRadius: radius, padding: '11px 15px', color: T.ink, fontSize: 14.5, lineHeight: 1.55,
           overflowWrap: 'anywhere',
         }}>
-          {m.image_url && (
-            <a href={m.image_url} target="_blank" rel="noreferrer">
-              <img src={m.image_url} alt="bifogad bild" style={{ maxWidth: '100%', borderRadius: 12, marginBottom: m.message_text ? 9 : 0, display: 'block', boxShadow: LIFT_SOFT }} />
-            </a>
-          )}
+          {/* OWASP A03 lagrad-XSS-skydd: rendera bilden BARA om URL:en passerar http(s)-allowlisten. */}
+          {(() => {
+            const src = safeImageUrl(m.image_url)
+            return src ? (
+              <a href={src} target="_blank" rel="noreferrer">
+                <img src={src} alt="bifogad bild" style={{ maxWidth: '100%', borderRadius: 12, marginBottom: m.message_text ? 9 : 0, display: 'block', boxShadow: LIFT_SOFT }} />
+              </a>
+            ) : null
+          })()}
           {m.message_text && <Markdown text={m.message_text} />}
         </div>
       </div>
     </div>
   )
+}
+
+// OWASP A03 (XSS) / lagrad-XSS-skydd: image_url skrivs in i chat_messages direkt av klienten (RLS-insert),
+// så en illvillig inloggad kan lagra t.ex. "javascript:..." som sedan renderas i <a href>/<img src>. React
+// kör inte javascript:-URL:er i src men exekverar dem i <a href> vid klick. Vi släpper därför bara igenom
+// http(s)-URL:er (helst vår egen publika chat-images-bucket), speglar backendens allowlist; annars renderas
+// ingen bild/länk alls. Returnerar en säker URL-sträng eller null.
+const safeImageUrl = (u) => {
+  if (!u || typeof u !== 'string') return null
+  try {
+    const url = new URL(u, window.location.origin)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null   // blockera javascript:/data:/blob:/m.m.
+    return url.href
+  } catch { return null }
 }
 
 /* ─────────── Markdown-rendering (react-markdown + GFM), stylad mot paletten ─────────── */

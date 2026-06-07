@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1024" />
+    <!-- OWASP A05/A03 (Content-Security-Policy, försvar på djupet mot XSS/injektion). script-src 'self':
+         bygget har inga inline-script (modulepreload-polyfill avstängd) och ingen eval, så ren same-origin-JS
+         räcker. style-src 'unsafe-inline' krävs av React-inline-stilar + Google Fonts. img-src/connect-src
+         tillåter https/wss brett (kartrutor, Supabase REST+Realtime, P2P-reläer) utan att släppa script.
+         OBS: GitHub Pages kan inte sätta HTTP-headers, så policyn levereras via meta (frame-ancestors
+         ignoreras i meta men skadar inte; resten gäller). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; form-action 'self'" />
     <title>LedMig: Kom hem tryggare</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

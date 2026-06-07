@@ -27,12 +27,19 @@ create index if not exists ix_chat_messages_created on public.chat_messages (cre
 -- ── Row Level Security ───────────────────────────────────────────────────────
 -- Allt låst till inloggade. AI-raderna skrivs av backend med service_role som kringgår RLS helt,
 -- så insert-policyn nedan gäller bara människornas egna meddelanden.
+--
+-- OWASP A01 (Broken Access Control / identitetsspoofing): insert-policyn binder raden till den
+-- autentiserade sessionen: user_id = auth.uid() OCH user_email = JWT:ns e-post. Utan den (with
+-- check (true)) kunde en inloggad användare via ett rått PostgREST-anrop lagra ett meddelande i
+-- någon annans namn (avsändaren visas i UI:t). Frontenden skickar redan me.id/me.email, så normal-
+-- flödet är oförändrat; AI-inserts berörs inte (service_role kringgår RLS).
 alter table public.chat_messages enable row level security;
 
 drop policy if exists chat_read  on public.chat_messages;
 drop policy if exists chat_write on public.chat_messages;
 create policy chat_read  on public.chat_messages for select to authenticated using (true);
-create policy chat_write on public.chat_messages for insert to authenticated with check (true);
+create policy chat_write on public.chat_messages for insert to authenticated
+  with check (user_id = auth.uid() and user_email = (auth.jwt() ->> 'email'));
 
 -- ── Realtime ─────────────────────────────────────────────────────────────────
 -- Lägg tabellen i realtime-publikationen så att INSERT broadcastas till alla inloggade klienter
