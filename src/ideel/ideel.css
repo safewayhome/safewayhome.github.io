@@ -1,0 +1,47 @@
+/* Fristående stilbas för den publika undersidan /ideel. Medvetet SKILD från tavlans index.css
+   (som sätter body overflow:hidden för whiteboarden): den här sidan ska scrolla som en vanlig sajt. */
+:root { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+
+html, body, #root { margin: 0; min-height: 100%; }
+
+body {
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #0b1022;
+  color: #ede7f0;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  /* Skydd mot oavsiktlig horisontell scroll (sidan ska bara scrolla vertikalt). */
+  overflow-x: hidden;
+}
+
+button, input, textarea { font-family: inherit; }
+a { color: inherit; }
+
+/* Synlig tangentbordsfokus (WCAG 2.4.7). Fälten har outline:none + inline-border, så vi använder en
+   box-shadow-ring (påverkas inte av inline-stilen) för inputs/textarea, och outline för knappar/länkar. */
+input:focus-visible, textarea:focus-visible {
+  border-color: #f0cf8c;
+  box-shadow: 0 0 0 3px rgba(240, 207, 140, 0.45);
+}
+button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible {
+  outline: 2px solid #f0cf8c;
+  outline-offset: 2px;
+}
+
+/* Mjuk entré för sektioner/kort + en lugn andning på de radiella ljus-aurorna bakom statistiken.
+   prefers-reduced-motion stänger av rörelsen för den som föredrar det. */
+@keyframes ideel-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes ideel-aura { 0%, 100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.05); } }
+
+.ideel-rise { animation: ideel-rise 0.6s ease both; }
+
+/* tunna, varma scrollbars i linje med natt-estetiken */
+*::-webkit-scrollbar { width: 11px; height: 11px; }
+*::-webkit-scrollbar-thumb { background: rgba(240,207,140,0.22); border-radius: 8px; border: 3px solid #0b1022; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
