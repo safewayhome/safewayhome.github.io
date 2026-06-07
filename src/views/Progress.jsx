@@ -1,8 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
-import { T, DIFFICULTIES } from '../theme'
+import { T, DIFFICULTIES, DIFF } from '../theme'
 import { computeProgress, progressByCategory, progressByDifficulty, ago, diffKey } from '../util'
 import { SYSTEM_DESC } from '../changelogData'
 import { API_BASE } from '../chat'
+
+// Klassificera en commits svårighetsgrad. Förstahandskälla: ärv från det tavlekort vars titel bäst
+// matchar commit-texten (token-överlapp) = "direkt info från tavlan". Saknas en tydlig matchning gör vi
+// en egen bedömning ur nyckelord, men i SAMMA kategorisering som tavlan (enkel/medel/svar/extrem).
+const _DIFF_HARD = ['säkerhet', 'owasp', 'iso', 'rls', 'ssrf', 'pipeline', 'integration', 'härdning', 'spatial', 'dsro', 'auth', 'migration', 'refaktor', 'arkitekt', 'navigation', 'avancerad', 'kryptering']
+const _DIFF_EASY = ['kommentar', 'typo', 'rensa', 'städ', 'readme', 'doc', 'lint', 'format', 'rättning', 'småfix', 'bump']
+const _tok = (s) => (String(s || '').toLowerCase().match(/[a-zåäö0-9]{3,}/g) || [])
+function classifyCommitDifficulty(summary, tasks) {
+  const ct = new Set(_tok(summary))
+  if (ct.size && tasks && tasks.length) {
+    let best = null
+    let bestScore = 0
+    for (const t of tasks) {
+      const tt = new Set(_tok(t.title))
+      if (!tt.size) continue
+      let overlap = 0
+      for (const w of ct) if (tt.has(w)) overlap++
+      const score = overlap / Math.max(2, Math.min(ct.size, tt.size))
+      if (score > bestScore) { bestScore = score; best = t }
+    }
+    if (best && bestScore >= 0.34) return diffKey(best)   // tydlig matchning -> ärv tavlekortets svårighet
+  }
+  const m = String(summary || '').toLowerCase()
+  if (_DIFF_HARD.some((k) => m.includes(k))) return 'svar'
+  if (_DIFF_EASY.some((k) => m.includes(k))) return 'enkel'
+  return 'medel'   // egen bedömning: varken tydligt svårt eller trivialt
+}
 
 // Visas tills GitHub-statistiken hämtats: de tre utvecklarna med nollor (så sektionen aldrig är tom).
 const DEV_PLACEHOLDER = [
@@ -16,15 +43,22 @@ const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace'
 // En commit-rad: kort SHA-bricka · nedkokad ämnesrad · (ev. författare) · relativ tid.
 // showAuthor=false i per-utvecklar-listan (det är redan den utvecklaren), true i den globala listan.
 function CommitRow({ c, showAuthor }) {
+  const d = c._diff && DIFF[c._diff]   // klassificerad svårighetsgrad (ärvd från tavlan eller bedömd)
   return (
     <div style={{
-      display: 'flex', alignItems: 'baseline', gap: 12, background: T.panel,
+      display: 'flex', alignItems: 'baseline', gap: 10, background: T.panel,
       border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 14px', boxShadow: T.shadowSoft,
     }}>
       <span style={{
         flex: '0 0 auto', fontFamily: MONO, fontSize: 11, color: T.roseDeep,
         background: T.roseSoft, border: `1px solid ${T.rose}33`, borderRadius: 6, padding: '2px 7px',
       }}>{c.sha}</span>
+      {d && (
+        <span title={`Svårighetsgrad: ${d.label}`} style={{
+          flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 800,
+          background: d.soft, color: d.text, border: `1px solid ${d.color}55`, borderRadius: 999, padding: '1px 8px',
+        }}>{d.glyph} {d.short}</span>
+      )}
       <span style={{ flex: 1, fontSize: 13, color: T.ink, fontWeight: 600, overflowWrap: 'anywhere' }}>{c.summary}</span>
       <span style={{ flex: '0 0 auto', fontSize: 11.5, color: T.inkSoft, fontWeight: 700, whiteSpace: 'nowrap' }}>
         {showAuthor && c.author ? c.author : ''}{showAuthor && c.author && c.date ? ' · ' : ''}{c.date ? ago(new Date(c.date).getTime()) : ''}
@@ -36,14 +70,21 @@ function CommitRow({ c, showAuthor }) {
 // Commit-lista som en TIDSLINJE: en pulserande "gång" (animerad räls, .lm-commit-rail) löper mellan
 // commit-noderna (.lm-commit-node pulserar) så historiken känns levande. Återanvänder CommitRow för korten.
 function CommitTimeline({ items, showAuthor }) {
+  const n = items.length
+  // Färgstyrkan avtar nedåt: nyast (överst) är starkast, äldre tonas ut, så det syns att toppen är färskast.
+  const fadeAt = (i) => (n <= 1 ? 1 : Math.max(0.4, 1 - (i / (n - 1)) * 0.6))
   return (
     <div style={{ position: 'relative', display: 'grid', gap: 8 }}>
-      {/* den pulserande gången: en kontinuerlig flödande linje från första till sista noden */}
-      {items.length > 1 && (
-        <div className="lm-commit-rail" style={{ position: 'absolute', left: 8, top: 18, bottom: 18, width: 2, borderRadius: 2 }} />
+      {/* den pulserande gången: en kontinuerlig flödande linje, maskad så den tonas ut nedåt (starkast överst) */}
+      {n > 1 && (
+        <div className="lm-commit-rail" style={{
+          position: 'absolute', left: 8, top: 18, bottom: 18, width: 2, borderRadius: 2,
+          WebkitMaskImage: 'linear-gradient(180deg, #000 0%, rgba(0,0,0,0.18) 100%)',
+          maskImage: 'linear-gradient(180deg, #000 0%, rgba(0,0,0,0.18) 100%)',
+        }} />
       )}
       {items.map((c, i) => (
-        <div key={`${c.sha}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 11, position: 'relative' }}>
+        <div key={`${c.sha}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 11, position: 'relative', opacity: fadeAt(i) }}>
           <span className="lm-commit-node" style={{
             flex: '0 0 auto', marginTop: 13, marginLeft: 3, width: 11, height: 11, borderRadius: 999,
             background: T.rose, border: '2px solid #fff', zIndex: 1,
@@ -106,12 +147,17 @@ export default function Progress({ tasks, visibleTasks }) {
   // Vilken utvecklares commits som är utfällda (en i taget). null = ingen.
   const [openDev, setOpenDev] = useState(null)
 
+  // Klassificera varje commit (ärv tavlans svårighet om titeln matchar, annars egen bedömning) en gång.
+  const commitsWithDiff = useMemo(
+    () => (commits || []).map((c) => ({ ...c, _diff: classifyCommitDifficulty(c.summary, tasks || []) })),
+    [commits, tasks],
+  )
   // Gruppera commits per utvecklarnamn: används av "Visa commits" och som robust antal när stats släpar.
   const commitsByDev = useMemo(() => {
     const m = {}
-    for (const c of (commits || [])) (m[c.author] = m[c.author] || []).push(c)
+    for (const c of commitsWithDiff) (m[c.author] = m[c.author] || []).push(c)
     return m
-  }, [commits])
+  }, [commitsWithDiff])
 
   const statsDevs = (gh && Array.isArray(gh.devs) && gh.devs.length) ? gh.devs : DEV_PLACEHOLDER
   // Slå ihop källorna: commit-antalet tas som det STÖRSTA av stats och den hämtade listräkningen, så
@@ -120,7 +166,9 @@ export default function Progress({ tasks, visibleTasks }) {
     ...d,
     commits: Math.max(Number(d.commits) || 0, (commitsByDev[d.name] || []).length),
   }))
-  const linesPending = !!(gh && gh.computing)   // rader kod beräknas fortfarande av GitHub
+  // "rader beräknas" när GitHub fortfarande räknar (computing) ELLER när vi visar den provisoriska
+  // per-commit-summan (source="commits") som ersätter 0:an tills den exakta all-time-siffran är klar.
+  const linesPending = !!(gh && (gh.computing || gh.source === 'commits'))
 
   // Avklarade uppgifter per utvecklare, grupperade på svårighetsgrad (tavlans kort). En "done"-uppgift
   // tillskrivs den som senast rörde den (updatedBy), matchat mot utvecklarnamnet (skiftlägesokänsligt).
@@ -286,7 +334,7 @@ export default function Progress({ tasks, visibleTasks }) {
         <div style={{ display: 'grid', gap: 7 }}>
           {commits === null && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Hämtar commit-historik…</div>}
           {commits && commits.length === 0 && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Ingen commit-historik tillgänglig just nu.</div>}
-          {commits && commits.length > 0 && <CommitTimeline items={commits} showAuthor />}
+          {commitsWithDiff.length > 0 && <CommitTimeline items={commitsWithDiff} showAuthor />}
         </div>
 
         <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 22, lineHeight: 1.5 }}>
