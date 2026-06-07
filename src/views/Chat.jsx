@@ -392,6 +392,23 @@ function Bubble({ m, mine }) {
               </a>
             ) : null
           })()}
+          {/* AI:ns tänkande-process: sparas i DB (thinking_process) och visas för ALLA i chatten, inte
+              bara avsändaren. Hopfälld som standard (kan vara lång); vem som helst kan fälla ut den. */}
+          {isAI && m.thinking_process && (
+            <details className="lm-think" style={{ marginBottom: m.message_text ? 10 : 0 }}>
+              <summary style={{
+                cursor: 'pointer', fontSize: 12, fontWeight: 800, color: T.roseDeep,
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 11px', borderRadius: 999,
+                background: T.roseSoft, border: `1px solid ${T.rose}33`, userSelect: 'none',
+              }}>🧠 Visa tänkande</summary>
+              <div style={{
+                marginTop: 8, padding: '10px 13px', background: '#fffaf8', border: `1px solid ${T.line}`,
+                borderRadius: 10, fontSize: 12.5, color: T.inkSoft, lineHeight: 1.5,
+              }}>
+                <Markdown text={m.thinking_process} />
+              </div>
+            </details>
+          )}
           {m.message_text && <Markdown text={m.message_text} />}
         </div>
       </div>

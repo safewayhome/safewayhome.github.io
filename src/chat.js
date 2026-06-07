@@ -198,6 +198,7 @@ function handleEvent(obj) {
       addMessage({
         id: obj.message_id || `local-ai-${Date.now()}`,
         message_text: obj.final, is_ai: true, user_email: 'LedMig AI',
+        thinking_process: obj.thinking || null,   // tänkande-processen: visas för ALLA (även via realtime)
         created_at: new Date().toISOString(),
       })
     }

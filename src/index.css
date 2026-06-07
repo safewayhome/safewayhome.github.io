@@ -67,6 +67,10 @@ input, select, textarea { font-family: inherit; }
 }
 .lm-commit-node { animation: lm-node-pulse 1.8s ease-in-out infinite; }
 
+/* Chattens "Visa tänkande": dölj den inbyggda details-triangeln (vi använder 🧠 i summary i stället). */
+.lm-think > summary { list-style: none; }
+.lm-think > summary::-webkit-details-marker { display: none; }
+
 /* "Uppdaterar…"-indikatorn: de tre punkterna blinkar i tur och ordning. */
 .lm-dots span { animation: lm-blink 1.2s infinite; }
 .lm-dots span:nth-child(2) { animation-delay: 0.2s; }

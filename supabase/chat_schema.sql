@@ -13,14 +13,18 @@
 create extension if not exists pgcrypto;   -- ger gen_random_uuid()
 
 create table if not exists public.chat_messages (
-  id           uuid primary key default gen_random_uuid(),
-  user_id      uuid references auth.users(id) on delete set null, -- vem som skrev (null för AI)
-  user_email   text,                                              -- denormaliserat: visa avsändare utan join mot auth
-  message_text text not null default '',
-  image_url    text,                                              -- publik URL till bifogad skärmdump (null = ingen)
-  is_ai        boolean not null default false,                    -- true = svar från LLM-kedjan
-  created_at   timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid references auth.users(id) on delete set null, -- vem som skrev (null för AI)
+  user_email      text,                                              -- denormaliserat: visa avsändare utan join mot auth
+  message_text    text not null default '',
+  image_url       text,                                              -- publik URL till bifogad skärmdump (null = ingen)
+  is_ai           boolean not null default false,                    -- true = svar från LLM-kedjan
+  thinking_process text,                                             -- AI:ns tänkande-process (synlig för ALLA i chatten)
+  created_at      timestamptz not null default now()
 );
+-- thinking_process: AI:ns resonemang (steg 1+2 i tänkande-läget) sparas så att HELA teamet ser det via
+-- Realtime, inte bara avsändaren. Idempotent ALTER så befintliga tabeller (utan kolumnen) uppgraderas.
+alter table public.chat_messages add column if not exists thinking_process text;
 -- Historik hämtas alltid i tidsordning -> index på created_at.
 create index if not exists ix_chat_messages_created on public.chat_messages (created_at);
 
