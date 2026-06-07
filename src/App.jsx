@@ -168,96 +168,243 @@ export default function App() {
 }
 
 /* ───────────────────────────── Top bar ───────────────────────────── */
+// Responsiv brytpunkt: under denna bredd byter navbaren till en kompakt rad + hamburgermeny (drawer),
+// så att inga knappar (t.ex. "Appen") kläms bort. Över den flyter en wrappande verktygsrad som aldrig
+// klipper. matchMedia gör att vi reagerar direkt vid omstorlek/rotation.
+function useIsCompact(maxWidth = 900) {
+  const [compact, setCompact] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= maxWidth : false))
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${maxWidth}px)`)
+    const on = () => setCompact(mq.matches)
+    on()
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [maxWidth])
+  return compact
+}
+
 function TopBar(props) {
   const {
     view, setView, cats, toggleCat, catStats, filterOpen, setFilterOpen,
     hiddenSubSet, toggleSub, people, conn, onAdd, onName, onSettings,
     canEdit, email, onLogin, onLogout,
   } = props
-  // Undertiteln under "LedMig" speglar aktuell flik: Nätet behåller whiteboard-texten, övriga flikar
-  // visar sitt eget namn (Tidslinje, Framsteg, Changelog, Data, Utvecklingschatt).
+  const compact = useIsCompact(900)
+  const [menuOpen, setMenuOpen] = useState(false)
+  useEffect(() => { if (!compact) setMenuOpen(false) }, [compact])   // stäng drawern när vi växlar upp till bred layout
+  // Undertiteln under "LedMig" speglar aktuell flik (döljs i kompakt läge för att spara plats).
   const brandSub = view === 'board' ? 'Utvecklings whiteboard · realtid' : (VIEWS.find((v) => v.key === view)?.label || '')
+  const showCats = view !== 'changelog' && view !== 'data' && view !== 'chat'   // kategorifiltren är irrelevanta i dessa vyer
+
+  const brand = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, minWidth: 0 }}>
+      <span style={{ fontSize: 22 }}>🛡️</span>
+      <div style={{ lineHeight: 1.05, minWidth: 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 16, color: T.ink }}>LedMig</div>
+        {!compact && <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{brandSub}</div>}
+      </div>
+    </div>
+  )
+
+  const tabs = (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, background: T.panelSoft, padding: 4, borderRadius: 12 }}>
+      {VIEWS.map((v) => (
+        <button key={v.key} onClick={() => setView(v.key)} style={{
+          border: 'none', borderRadius: 9, padding: '7px 14px', fontWeight: 700, fontSize: 13.5,
+          background: view === v.key ? T.panel : 'transparent',
+          color: view === v.key ? T.ink : T.inkSoft,
+          boxShadow: view === v.key ? T.shadowSoft : 'none', whiteSpace: 'nowrap',
+        }}>
+          <span style={{ marginRight: 6 }}>{v.glyph}</span>{v.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  const catChips = showCats ? (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+      {CATEGORIES.map((c) => {
+        const on = cats[c.key]
+        const st = (catStats && catStats[c.key]) || { done: 0, total: 0 }
+        return (
+          <button key={c.key} onClick={() => toggleCat(c.key)} title={`Visa/dölj ${c.label} (${st.done}/${st.total} klara)`} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
+            border: `1.5px solid ${on ? c.color : T.line}`,
+            background: on ? c.color + '22' : T.panel, color: on ? T.ink : T.inkSoft,
+            fontWeight: 700, fontSize: 12.5, opacity: on ? 1 : 0.6, whiteSpace: 'nowrap',
+          }}>
+            <span style={{
+              width: 13, height: 13, borderRadius: 4, display: 'grid', placeItems: 'center',
+              background: on ? c.color : 'transparent', border: `1.5px solid ${on ? c.color : T.todo}`,
+              color: '#fff', fontSize: 10, fontWeight: 900,
+            }}>{on ? '✓' : ''}</span>
+            <span>{c.glyph} {c.label}</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: on ? c.color : T.inkSoft, opacity: 0.9 }}>{st.done}/{st.total}</span>
+          </button>
+        )
+      })}
+      <div style={{ position: 'relative' }}>
+        <button onClick={() => setFilterOpen((o) => !o)} title="Detaljfilter (underkategorier)" style={{
+          padding: '6px 10px', borderRadius: 999, border: `1.5px solid ${T.line}`,
+          background: hiddenSubSet.size ? T.roseSoft : T.panel, color: T.inkSoft, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap',
+        }}>⛃ Filter{hiddenSubSet.size ? ` (${hiddenSubSet.size})` : ''}</button>
+        {filterOpen && (
+          <SubFilterPopover cats={cats} hiddenSubSet={hiddenSubSet} toggleSub={toggleSub} onClose={() => setFilterOpen(false)} />
+        )}
+      </div>
+    </div>
+  ) : null
+
+  const appenLink = (
+    <a href="/app/" title="Öppna säkerhetsappen" style={{
+      textDecoration: 'none', border: `1px solid ${T.line}`, background: T.panel, color: T.ink,
+      fontWeight: 800, fontSize: 13, padding: '8px 12px', borderRadius: 11,
+      display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+    }}>🛡️ Appen ↗</a>
+  )
+
+  // ── Kompakt läge (laptop-smal/surfplatta/mobil): brand + Uppgift + hamburgare. Resten bor i drawern. ──
+  if (compact) {
+    return (
+      <>
+        <header style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+          background: T.panel, borderBottom: `1px solid ${T.line}`, boxShadow: T.shadowSoft, zIndex: 30,
+        }}>
+          {brand}
+          <div style={{ flex: 1 }} />
+          <button onClick={onAdd} title={canEdit ? 'Nytt kort (n)' : 'Logga in för att lägga till kort'} style={{
+            border: 'none', background: canEdit ? T.rose : T.todo, color: '#fff', fontWeight: 800, fontSize: 15,
+            padding: '8px 12px', borderRadius: 11, boxShadow: T.shadowSoft,
+          }}>{canEdit ? '＋' : '🔒'}</button>
+          <button onClick={() => setMenuOpen(true)} aria-label="Öppna meny" style={{
+            border: `1px solid ${T.line}`, background: T.panel, borderRadius: 10, padding: '8px 12px', fontSize: 16, color: T.ink,
+          }}>☰</button>
+        </header>
+        {menuOpen && (
+          <MobileDrawer
+            onClose={() => setMenuOpen(false)}
+            view={view} setView={(k) => { setView(k); setMenuOpen(false) }}
+            showCats={showCats} cats={cats} toggleCat={toggleCat} catStats={catStats}
+            conn={conn} people={people} onName={onName}
+            canEdit={canEdit} email={email}
+            onLogin={() => { setMenuOpen(false); onLogin() }} onLogout={onLogout}
+            onSettings={() => { setMenuOpen(false); onSettings() }}
+          />
+        )}
+      </>
+    )
+  }
+
+  // ── Bred läge: wrappande verktygsrad (flyter till flera rader i stället för att klippa högerkanten). ──
   return (
     <header style={{
-      display: 'flex', alignItems: 'center', gap: 16, padding: '10px 18px',
+      display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between',
+      gap: '10px 16px', padding: '10px 18px',
       background: T.panel, borderBottom: `1px solid ${T.line}`, boxShadow: T.shadowSoft, zIndex: 30,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 210 }}>
-        <span style={{ fontSize: 22 }}>🛡️</span>
-        <div style={{ lineHeight: 1.05 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, color: T.ink }}>LedMig</div>
-          <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}>{brandSub}</div>
-        </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 14px', minWidth: 0 }}>
+        {brand}
+        {tabs}
+        {catChips}
       </div>
-
-      {/* view tabs */}
-      <div style={{ display: 'flex', gap: 4, background: T.panelSoft, padding: 4, borderRadius: 12 }}>
-        {VIEWS.map((v) => (
-          <button key={v.key} onClick={() => setView(v.key)} style={{
-            border: 'none', borderRadius: 9, padding: '7px 14px', fontWeight: 700, fontSize: 13.5,
-            background: view === v.key ? T.panel : 'transparent',
-            color: view === v.key ? T.ink : T.inkSoft,
-            boxShadow: view === v.key ? T.shadowSoft : 'none',
-          }}>
-            <span style={{ marginRight: 6 }}>{v.glyph}</span>{v.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 10px' }}>
+        <ConnChip conn={conn} />
+        <PresenceBar people={people} onName={onName} />
+        <AuthChip canEdit={canEdit} email={email} onLogin={onLogin} onLogout={onLogout} />
+        {appenLink}
+        <button onClick={onAdd} title={canEdit ? 'Nytt kort (n)' : 'Logga in för att lägga till kort'} style={{
+          border: 'none', background: canEdit ? T.rose : T.todo, color: '#fff', fontWeight: 800, fontSize: 13.5,
+          padding: '9px 14px', borderRadius: 11, boxShadow: T.shadowSoft, whiteSpace: 'nowrap',
+        }}>{canEdit ? '＋ Uppgift' : '🔒 Uppgift'}</button>
+        <button onClick={onSettings} title="Inställningar" style={{
+          border: `1px solid ${T.line}`, background: T.panel, borderRadius: 10, padding: '8px 10px', fontSize: 15,
+        }}>⚙️</button>
       </div>
-
-      {/* category visibility checkboxes (irrelevanta i changelog-/data-/chat-vyn) */}
-      {view !== 'changelog' && view !== 'data' && view !== 'chat' && (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        {CATEGORIES.map((c) => {
-          const on = cats[c.key]
-          const st = (catStats && catStats[c.key]) || { done: 0, total: 0 }
-          return (
-            <button key={c.key} onClick={() => toggleCat(c.key)} title={`Visa/dölj ${c.label} (${st.done}/${st.total} klara)`} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
-              border: `1.5px solid ${on ? c.color : T.line}`,
-              background: on ? c.color + '22' : T.panel, color: on ? T.ink : T.inkSoft,
-              fontWeight: 700, fontSize: 12.5, opacity: on ? 1 : 0.6,
-            }}>
-              <span style={{
-                width: 13, height: 13, borderRadius: 4, display: 'grid', placeItems: 'center',
-                background: on ? c.color : 'transparent', border: `1.5px solid ${on ? c.color : T.todo}`,
-                color: '#fff', fontSize: 10, fontWeight: 900,
-              }}>{on ? '✓' : ''}</span>
-              <span>{c.glyph} {c.label}</span>
-              <span style={{ fontSize: 11, fontWeight: 800, color: on ? c.color : T.inkSoft, opacity: 0.9 }}>{st.done}/{st.total}</span>
-            </button>
-          )
-        })}
-        <div style={{ position: 'relative' }}>
-          <button onClick={() => setFilterOpen((o) => !o)} title="Detaljfilter (underkategorier)" style={{
-            padding: '6px 10px', borderRadius: 999, border: `1.5px solid ${T.line}`,
-            background: hiddenSubSet.size ? T.roseSoft : T.panel, color: T.inkSoft, fontWeight: 700, fontSize: 12.5,
-          }}>⛃ Filter{hiddenSubSet.size ? ` (${hiddenSubSet.size})` : ''}</button>
-          {filterOpen && (
-            <SubFilterPopover cats={cats} hiddenSubSet={hiddenSubSet} toggleSub={toggleSub} onClose={() => setFilterOpen(false)} />
-          )}
-        </div>
-      </div>
-      )}
-
-      <div style={{ flex: 1 }} />
-
-      <ConnChip conn={conn} />
-      <PresenceBar people={people} onName={onName} />
-      <AuthChip canEdit={canEdit} email={email} onLogin={onLogin} onLogout={onLogout} />
-
-      <a href="/app/" title="Öppna säkerhetsappen" style={{
-        textDecoration: 'none', border: `1px solid ${T.line}`, background: T.panel, color: T.ink,
-        fontWeight: 800, fontSize: 13, padding: '8px 12px', borderRadius: 11,
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-      }}>🛡️ Appen ↗</a>
-      <button onClick={onAdd} title={canEdit ? 'Nytt kort (n)' : 'Logga in för att lägga till kort'} style={{
-        border: 'none', background: canEdit ? T.rose : T.todo, color: '#fff', fontWeight: 800, fontSize: 13.5,
-        padding: '9px 14px', borderRadius: 11, boxShadow: T.shadowSoft,
-      }}>{canEdit ? '＋ Uppgift' : '🔒 Uppgift'}</button>
-      <button onClick={onSettings} title="Inställningar" style={{
-        border: `1px solid ${T.line}`, background: T.panel, borderRadius: 10, padding: '8px 10px', fontSize: 15,
-      }}>⚙️</button>
     </header>
+  )
+}
+
+/* Slide-in-meny för kompakta skärmar: rymmer vyer, filter, status, konto och åtgärder så att inget klipps
+   på laptop/mobil. Påverkar BARA presentationen: alla callbacks (auth, signOut, addTask, inställningar)
+   och datalager-anrop är oförändrade. */
+function MobileDrawer(props) {
+  const {
+    onClose, view, setView, showCats, cats, toggleCat, catStats,
+    conn, people, onName, canEdit, email, onLogin, onLogout, onSettings,
+  } = props
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(63,54,64,0.32)', animation: 'lm-fade-in .12s ease' }} />
+      <div role="dialog" aria-label="Meny" style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 51, width: 'min(86vw, 340px)',
+        background: T.panel, borderLeft: `1px solid ${T.line}`, boxShadow: T.shadow, padding: 16,
+        overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: T.ink }}>Meny</div>
+          <button onClick={onClose} aria-label="Stäng meny" style={{ border: `1px solid ${T.line}`, background: T.panel, borderRadius: 9, padding: '6px 11px', fontSize: 15, color: T.ink }}>✕</button>
+        </div>
+
+        <DrawerSection title="Vyer">
+          <div style={{ display: 'grid', gap: 6 }}>
+            {VIEWS.map((v) => (
+              <button key={v.key} onClick={() => setView(v.key)} style={{
+                textAlign: 'left', border: `1px solid ${view === v.key ? T.rose : T.line}`, borderRadius: 11,
+                padding: '11px 12px', fontWeight: 700, fontSize: 14,
+                background: view === v.key ? T.roseSoft : T.panel, color: T.ink,
+              }}><span style={{ marginRight: 8 }}>{v.glyph}</span>{v.label}</button>
+            ))}
+          </div>
+        </DrawerSection>
+
+        {showCats && (
+          <DrawerSection title="Filter">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {CATEGORIES.map((c) => {
+                const on = cats[c.key]
+                const st = (catStats && catStats[c.key]) || { done: 0, total: 0 }
+                return (
+                  <button key={c.key} onClick={() => toggleCat(c.key)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '7px 11px', borderRadius: 999,
+                    border: `1.5px solid ${on ? c.color : T.line}`, background: on ? c.color + '22' : T.panel,
+                    color: on ? T.ink : T.inkSoft, fontWeight: 700, fontSize: 12.5, opacity: on ? 1 : 0.6,
+                  }}>{c.glyph} {c.label} <span style={{ fontWeight: 800 }}>{st.done}/{st.total}</span></button>
+                )
+              })}
+            </div>
+          </DrawerSection>
+        )}
+
+        <DrawerSection title="Status"><ConnChip conn={conn} /></DrawerSection>
+
+        <DrawerSection title="Konto">
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
+            <PresenceBar people={people} onName={onName} />
+            <AuthChip canEdit={canEdit} email={email} onLogin={onLogin} onLogout={onLogout} />
+          </div>
+        </DrawerSection>
+
+        <div style={{ display: 'grid', gap: 8, marginTop: 'auto' }}>
+          <a href="/app/" style={{
+            textDecoration: 'none', textAlign: 'center', border: `1px solid ${T.line}`, background: T.panel, color: T.ink,
+            fontWeight: 800, fontSize: 14, padding: '12px', borderRadius: 11,
+          }}>🛡️ Öppna appen ↗</a>
+          <button onClick={onSettings} style={{
+            border: `1px solid ${T.line}`, background: T.panel, color: T.ink, fontWeight: 800, fontSize: 14, padding: '12px', borderRadius: 11,
+          }}>⚙️ Inställningar</button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function DrawerSection({ title, children }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: T.inkSoft, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>{title}</div>
+      {children}
+    </div>
   )
 }
 

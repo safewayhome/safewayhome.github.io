@@ -45,7 +45,7 @@ export default function Data() {
           boxShadow: T.shadowSoft, padding: 20, marginBottom: 24,
           display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
         }}>
-          <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 16, color: T.ink, marginBottom: 4 }}>
               Se insamlad trygghetsdata (AI-träningsunderlag)
             </div>
@@ -114,7 +114,7 @@ function Stat({ label, value }) {
   return (
     <div style={{
       background: T.panel, border: `1px solid ${T.line}`, borderRadius: 12, boxShadow: T.shadowSoft,
-      padding: '12px 16px', minWidth: 120, flex: '1 1 160px',
+      padding: '12px 16px', minWidth: 0, flex: '1 1 160px',
     }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, color: T.inkSoft, textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 800, color: T.ink, marginTop: 3 }}>{value}</div>

@@ -117,13 +117,13 @@ export default function Changelog() {
                     </div>
                     <div style={{ fontSize: 12.5, color: T.inkSoft, lineHeight: 1.45, marginTop: 7 }}>{layer.subtitle}</div>
                   </div>
-                  <div style={{ flex: 1, minWidth: 220, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {layer.nodes.map((node) => {
                       const a = AREA[node.cat] || AREA.dev
                       return (
                         <div key={node.label} title={node.sub} style={{
                           background: a.color + '14', border: `1px solid ${a.color}40`,
-                          borderLeft: `3px solid ${a.color}`, borderRadius: 10, padding: '7px 10px', minWidth: 132,
+                          borderLeft: `3px solid ${a.color}`, borderRadius: 10, padding: '7px 10px', minWidth: 0,
                         }}>
                           <div style={{ fontSize: 12.5, fontWeight: 800, color: T.ink, lineHeight: 1.2 }}>{node.label}</div>
                           <div style={{ fontSize: 11, color: T.inkSoft, lineHeight: 1.3, marginTop: 2 }}>{node.sub}</div>

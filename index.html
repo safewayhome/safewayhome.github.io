@@ -2,7 +2,9 @@
 <html lang="sv">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=1024" />
+    <!-- Responsiv viewport: följ enhetens faktiska bredd (var tidigare låst till 1024 -> klippte högerkanten
+         på laptops). Layouten anpassar sig nu via flexibel navbar + brytpunkter i React/CSS i stället. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- OWASP A05/A03 (Content-Security-Policy, försvar på djupet mot XSS/injektion). script-src 'self':
          bygget har inga inline-script (modulepreload-polyfill avstängd) och ingen eval, så ren same-origin-JS
          räcker. style-src 'unsafe-inline' krävs av React-inline-stilar + Google Fonts. img-src/connect-src

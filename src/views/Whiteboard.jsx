@@ -413,7 +413,7 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused, canEdit, onRequir
           </div>
         </div>
       ) : (
-        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 6, fontSize: 11, color: T.inkSoft, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 9, padding: '5px 9px', boxShadow: T.shadowSoft, whiteSpace: 'nowrap' }}>
+        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 6, fontSize: 11, color: T.inkSoft, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 9, padding: '5px 9px', boxShadow: T.shadowSoft, whiteSpace: 'normal', maxWidth: 'calc(100vw - 28px)', textAlign: 'center' }}>
 ＋ i en kolumnrubrik = nytt kort · dubbelklicka ytan = nytt kort · klicka statusprick = ändra status · håll musen över ett kort = lys upp dess kopplingar
         </div>
       )}
@@ -426,7 +426,7 @@ function Legend() {
     <div style={{
       position: 'absolute', left: 14, top: 14, zIndex: 6, background: T.panel, border: `1px solid ${T.line}`,
       borderRadius: 12, boxShadow: T.shadowSoft, padding: '10px 12px', display: 'flex', alignItems: 'center',
-      gap: 13, fontSize: 11.5, fontWeight: 700, color: T.inkSoft, flexWrap: 'wrap', maxWidth: 460,
+      gap: 13, fontSize: 11.5, fontWeight: 700, color: T.inkSoft, flexWrap: 'wrap', maxWidth: 'min(460px, calc(100vw - 28px))',
     }}>
       <span style={{ fontWeight: 800, color: T.ink }}>Svårighet:</span>
       {DIFFICULTIES.map((d) => (
