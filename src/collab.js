@@ -27,7 +27,7 @@
  * modulen så att vyerna (App/Whiteboard/TaskEditor) inte behövde skrivas om.
  */
 import { supabase, supabaseEnabled } from './supabaseClient'
-import { canWrite, authStore } from './auth'
+import { canWrite, authStore, currentUid } from './auth'
 import { PRESENCE_COLORS, DEFAULT_DIFFICULTY, STATUS, DIFF, CAT } from './theme'
 
 // --------------------------------------------------------------------------- config
@@ -70,6 +70,8 @@ export const tasksStore = createStore([])
 export const peopleStore = createStore([])
 export const cursorsStore = createStore([])
 export const connStore = createStore({ peers: 0, online: false, synced: false })
+// Ångra-/gör-om-tillstånd för UI:t (knapparnas av/på + globalt läge + pågående global körning).
+export const undoStore = createStore({ canUndo: false, canRedo: false, global: false, busy: false, opsAvailable: false })
 
 // --------------------------------------------------------------------------- in-memory state
 const tasks = new Map()        // id -> task (app-formad, camelCase)
@@ -129,13 +131,19 @@ function rowToTask(r) {
   }
 }
 function taskToRow(t) {
-  return {
+  const row = {
     id: t.id, title: t.title, description: t.description, approach: t.approach,
     category: t.category, sub: t.sub, status: t.status, difficulty: t.difficulty,
     sort_order: t.order ?? 0, x: t.x ?? null, y: t.y ?? null,
     deps: t.deps ?? [], created_by: t.createdBy ?? null,
     updated_by: t.updatedBy ?? (identity.name || 'någon'),
   }
+  // Ta med tidsstämplarna NÄR de finns, så global ångra/gör om (upsert av before/after-blobben)
+  // återställer ursprunglig skapad-/ändrad-tid i stället för now(). Utelämnas när de saknas
+  // (t.ex. seed-rader) så att NOT NULL-defaulten now() gäller då i stället för en null-krock.
+  if (t.createdAt) row.created_at = new Date(t.createdAt).toISOString()
+  if (t.updatedAt) row.updated_at = new Date(t.updatedAt).toISOString()
+  return row
 }
 // Plocka ut en delmängd kolumner ur en task för en kolumn-scopad .update().
 function rowSubset(t, fields) {
@@ -233,6 +241,9 @@ export function createTask(fields = {}, id = null) {
     p.finally(() => createPromises.delete(tid))
   }
   logActivity(tid, 'created', 'skapade kortet') // insert gate:as internt tills task-raden finns (FK)
+  // Ångra-historik: lokalt (delete inverterar) + global op-logg.
+  recordOp('create', tid, null, taskToRow(t))
+  pushUndo({ undo: [{ kind: 'delete', id: tid }], redo: [{ kind: 'recreate', snapshot: { ...t } }], at: Date.now() })
   return tid
 }
 
@@ -243,6 +254,21 @@ export function updateTask(id, patch) {
   const next = { ...cur, ...patch, updatedAt: Date.now(), updatedBy: identity.name || 'någon' }
   tasks.set(id, next); pushTasks(); saveCache()
 
+  // Ångra-historik: spela bara in fält som FAKTISKT ändrade värde (inga no-op-steg). Görs före
+  // ev. lokalt-läge-utgång så ångra funkar även utan DB. Enstaka textfält slås ihop till ett pass.
+  const changedKeys = Object.keys(patch).filter((k) => !eq(cur[k], next[k]))
+  if (changedKeys.length && !applyingHistory) {
+    const beforeC = {}, afterC = {}
+    changedKeys.forEach((k) => { beforeC[k] = cur[k]; afterC[k] = next[k] })
+    const single = changedKeys.length === 1 ? changedKeys[0] : null
+    pushUndo({
+      undo: [{ kind: 'update', id, patch: beforeC }],
+      redo: [{ kind: 'update', id, patch: afterC }],
+      at: Date.now(),
+      _coalesceKey: (single && (single in TEXT_FIELDS)) ? `${id}:${single}` : null,
+    })
+  }
+
   // historik: diskreta ändringar loggas direkt, fritext debouncas (annars en rad per tangenttryck)
   const discrete = describeDiscrete(patch)
   if (discrete.length) logActivity(id, 'update', cap(discrete.join(', ')))
@@ -250,8 +276,16 @@ export function updateTask(id, patch) {
   if (textActKeys.length) scheduleTextActivity(id, textActKeys)
 
   if (!dbMode) return
-  // Markera ändrade fält dirty direkt (skyddar mot att ett eko backar dem), skriv sen.
-  const changed = Object.keys(patch).filter((k) => MAPPABLE.has(k))
+  // Global op-logg: buffra ändrade, mappbara fält (before/after) -> en op-rad per skrivpass.
+  const changedM = changedKeys.filter((k) => MAPPABLE.has(k))
+  if (changedM.length) {
+    const bef = {}, aft = {}
+    changedM.forEach((k) => { bef[k] = cur[k]; aft[k] = next[k] })
+    recordOpUpdate(id, bef, aft)
+  }
+  // Markera ändrade fält dirty direkt (skyddar mot att ett eko backar dem), skriv sen. Vi använder
+  // changedM (fält som FAKTISKT ändrade värde): no-op-anrop ska varken bli dirty eller en DB-skrivning.
+  const changed = changedM
   if (!changed.length) return
   markDirty(id, changed, next)
   const textChanged = changed.filter((k) => k in TEXT_FIELDS)
@@ -262,17 +296,28 @@ export function updateTask(id, patch) {
 
 export function deleteTask(id) {
   if (!canWrite()) return // ej inloggad: radering kräver login
+  const existing = tasks.get(id)
+  if (!existing) return
+  const snap = { ...existing }            // fullständig kopia för lokal ångra (återskapa exakt)
+  const beforeRow = taskToRow(existing)   // rad-form för global op-logg
   clearTaskTimers(id)
-  const dependents = []
+  const dependents = []                   // { id, oldDeps }: korten som pekar på det raderade
   tasks.forEach((t) => {
     const deps = t.deps || []
-    if (deps.includes(id)) { t.deps = deps.filter((d) => d !== id); dependents.push(t.id) }
+    if (deps.includes(id)) { dependents.push({ id: t.id, oldDeps: [...deps] }); t.deps = deps.filter((d) => d !== id) }
   })
   tasks.delete(id); dirty.delete(id); pushTasks(); saveCache()
   if (dbMode) {
     supabase.from('board_tasks').delete().eq('id', id).then(({ error }) => { if (error) console.warn('delete', error.message) })
     // markera deps dirty på beroende-korten så ett stalet eko inte tillfälligt ritar tillbaka den döda pilen
-    dependents.forEach((did) => { markDirty(did, ['deps'], tasks.get(did)); writeCols(did, ['deps']) })
+    dependents.forEach((d) => { markDirty(d.id, ['deps'], tasks.get(d.id)); writeCols(d.id, ['deps']) })
+    recordOp('delete', id, beforeRow, null)
+  }
+  // Ångra-historik (lokalt): återskapa kortet OCH återställ beroende-kortens gamla pilar.
+  if (!applyingHistory) {
+    const undoOps = [{ kind: 'recreate', snapshot: snap }]
+    dependents.forEach((d) => undoOps.push({ kind: 'update', id: d.id, patch: { deps: d.oldDeps } }))
+    pushUndo({ undo: undoOps, redo: [{ kind: 'delete', id }], at: Date.now() })
   }
   // board_activity för kortet städas bort via ON DELETE CASCADE i DB:n.
 }
@@ -280,6 +325,209 @@ export function deleteTask(id) {
 function clearTaskTimers(id) {
   const w = textWriteTimers.get(id); if (w) { clearTimeout(w.timer); textWriteTimers.delete(id) }
   const a = textActTimers.get(id); if (a) { clearTimeout(a.timer); textActTimers.delete(id) }
+}
+
+// --------------------------------------------------------------------------- ångra / gör om (undo/redo)
+/**
+ * Två lager ångra:
+ *   1) LOKALT (per användare, ingen extra tabell): varje egen handling (skapa/redigera/radera kort,
+ *      ändra beroenden) lagras som ett par {undo, redo} av operationsbeskrivningar i en stack. Ctrl/Cmd+Z
+ *      backar din senaste handling, Ctrl/Cmd+Shift+Z gör om. Snabba textändringar slås ihop (coalesce)
+ *      så ett "skrivpass" blir ETT ångra-steg, inte ett per tangenttryck.
+ *   2) GLOBALT (togglas i UI:t): backar i stället teamets senaste DB-ändring (board_ops-loggen), flera
+ *      steg bakåt. Eftersom board_tasks är delad syns ångringen direkt hos ALLA via Realtime.
+ *
+ * applyingHistory: sant medan vi applicerar en invers lokalt -> spela inte in en ny lokal post (men
+ * skrivningen blir ändå en genuin ändring i den globala loggen). applyingGlobal: sant medan vi skriver
+ * en global ångring rakt mot board_tasks -> spela INTE in en ny board_ops-rad (annars oändlig loop).
+ */
+const UNDO_CAP = 80
+const COALESCE_MS = 700
+const undoStack = []   // { undo:[op], redo:[op], at, _coalesceKey? }
+const redoStack = []
+let applyingHistory = false
+let applyingGlobal = false
+let opsAvailable = false   // sätts true om board_ops-tabellen finns (annars: bara lokal ångra)
+
+const GLOBAL_UNDO_KEY = 'lm.undo.global.' + BOARD_ID
+let globalUndoMode = (() => { try { return localStorage.getItem(GLOBAL_UNDO_KEY) === '1' } catch { return false } })()
+export const isGlobalUndo = () => globalUndoMode
+export function setGlobalUndo(on) {
+  globalUndoMode = !!on
+  try { localStorage.setItem(GLOBAL_UNDO_KEY, on ? '1' : '0') } catch { /* ignore */ }
+  refreshUndoStore()
+}
+refreshUndoStore() // spegla persisterat globalt läge direkt vid laddning (opsAvailable sätts av probeOps)
+
+function refreshUndoStore() {
+  const cur = undoStore.get()
+  undoStore.set({
+    // Globalt läge: knapparna är på så länge tabellen finns (vi vet inte synkront hur många op:ar
+    // som återstår -> tomt fall hanteras tyst i globalUndo/globalRedo). Lokalt: spegla stackarna.
+    canUndo: globalUndoMode ? opsAvailable : undoStack.length > 0,
+    canRedo: globalUndoMode ? opsAvailable : redoStack.length > 0,
+    global: globalUndoMode, busy: cur.busy || false, opsAvailable,
+  })
+}
+function setBusy(b) { undoStore.set({ ...undoStore.get(), busy: b }) }
+
+// Spela in en lokal ångra-post (med coalescing av textpass på samma kort/fält).
+function pushUndo(entry) {
+  if (applyingHistory) return
+  const last = undoStack[undoStack.length - 1]
+  if (last && entry._coalesceKey && last._coalesceKey === entry._coalesceKey && (entry.at - last.at) < COALESCE_MS) {
+    last.redo = entry.redo            // behåll äldsta "före", ta nyaste "efter"
+    last.at = entry.at
+  } else {
+    undoStack.push(entry)
+    if (undoStack.length > UNDO_CAP) undoStack.shift()
+  }
+  redoStack.length = 0               // en ny handling nollställer gör-om
+  refreshUndoStore()
+}
+
+// Applicera en lista operationsbeskrivningar utan att spela in nya lokala poster.
+function applyOps(ops) {
+  applyingHistory = true
+  try {
+    ops.forEach((op) => {
+      if (op.kind === 'update') updateTask(op.id, op.patch)
+      else if (op.kind === 'delete') deleteTask(op.id)
+      else if (op.kind === 'recreate') restoreTask(op.snapshot)
+    })
+  } finally { applyingHistory = false }
+}
+
+// Återställ ett raderat kort (lokal ångra av en delete): sätt tillbaka raden + logga + global op.
+function restoreTask(snap) {
+  if (!canWrite() || !snap || !snap.id) return
+  const t = { ...snap, updatedAt: Date.now(), updatedBy: identity.name || 'någon' }
+  tasks.set(t.id, t); pushTasks(); saveCache(); sessionIds.add(t.id)
+  if (dbMode) {
+    const p = writeRowFull(t.id)
+    createPromises.set(t.id, p); p.finally(() => createPromises.delete(t.id))
+    recordOp('create', t.id, null, taskToRow(t))
+  }
+  logActivity(t.id, 'created', 'återställde kortet')
+}
+
+export function undo() {
+  if (globalUndoMode) return globalUndo()
+  if (!canWrite()) return { error: 'Logga in för att ångra.' }
+  const entry = undoStack.pop()
+  if (!entry) return { error: 'Inget mer att ångra.' }
+  applyOps(entry.undo)
+  redoStack.push(entry); refreshUndoStore()
+  return { error: null }
+}
+export function redo() {
+  if (globalUndoMode) return globalRedo()
+  if (!canWrite()) return { error: 'Logga in för att göra om.' }
+  const entry = redoStack.pop()
+  if (!entry) return { error: 'Inget att göra om.' }
+  applyOps(entry.redo)
+  undoStack.push(entry); refreshUndoStore()
+  return { error: null }
+}
+
+// --------------------------------------------------------------------------- global op-logg (board_ops)
+const opBuffer = new Map() // id -> { before, after, timer }: slår ihop ett skrivpass till EN op-rad
+function recordOp(kind, taskId, before, after) {
+  if (!dbMode || applyingGlobal) return
+  insertOp({ op_kind: kind, task_id: taskId, before: before ?? null, after: after ?? null })
+}
+// Update-op:ar buffras + debounce:as (precis som DB-skrivningen) så att text inte blir en op per tecken.
+function recordOpUpdate(id, before, after) {
+  if (!dbMode || applyingGlobal) return
+  let e = opBuffer.get(id)
+  if (!e) { e = { before: {}, after: {}, timer: null }; opBuffer.set(id, e) }
+  Object.keys(before).forEach((k) => { if (!(k in e.before)) e.before[k] = before[k] }) // behåll äldsta "före"
+  Object.assign(e.after, after)
+  clearTimeout(e.timer)
+  e.timer = setTimeout(() => { opBuffer.delete(id); flushOpUpdate(id, e.before, e.after) }, 700)
+}
+function flushOpUpdate(id, before, after) {
+  const beforeRow = {}, afterRow = {}
+  Object.keys(after).forEach((k) => {
+    if (!MAPPABLE.has(k)) return
+    beforeRow[col(k)] = (k === 'deps' ? (before[k] ?? []) : (before[k] ?? null))
+    afterRow[col(k)] = (k === 'deps' ? (after[k] ?? []) : (after[k] ?? null))
+  })
+  if (!Object.keys(afterRow).length) return
+  insertOp({ op_kind: 'update', task_id: id, before: beforeRow, after: afterRow })
+}
+function insertOp(p) {
+  if (!dbMode || applyingGlobal) return
+  const row = {
+    board_id: BOARD_ID, op_kind: p.op_kind, task_id: p.task_id,
+    before: p.before ?? null, after: p.after ?? null,
+    // actor_id binds raden till den inloggade (auth.uid()) -> RLS hindrar spoofing (OWASP A01).
+    // actor_name är bara en denormaliserad visningsetikett (samma mönster som trådarnas created_by_name).
+    actor_id: currentUid(), actor_name: identity.name || 'någon',
+  }
+  supabase.from('board_ops').insert(row).then(({ error }) => {
+    if (error) { opsAvailable = false; refreshUndoStore() } // tabell saknas -> global ångra ej tillgänglig
+  })
+}
+
+// Skriv en invers (global ångra) rakt mot board_tasks. applyingGlobal hindrar att detta blir en ny op.
+async function invertOp(op) {
+  applyingGlobal = true
+  try {
+    if (op.op_kind === 'create') await supabase.from('board_tasks').delete().eq('id', op.task_id)
+    else if (op.op_kind === 'delete') { if (op.before) await supabase.from('board_tasks').upsert(op.before) }
+    else if (op.op_kind === 'update') { if (op.before) await supabase.from('board_tasks').update(op.before).eq('id', op.task_id) }
+  } finally { applyingGlobal = false }
+}
+async function applyOpForward(op) {
+  applyingGlobal = true
+  try {
+    if (op.op_kind === 'create') { if (op.after) await supabase.from('board_tasks').upsert(op.after) }
+    else if (op.op_kind === 'delete') await supabase.from('board_tasks').delete().eq('id', op.task_id)
+    else if (op.op_kind === 'update') { if (op.after) await supabase.from('board_tasks').update(op.after).eq('id', op.task_id) }
+  } finally { applyingGlobal = false }
+}
+
+export async function globalUndo() {
+  if (!dbMode || !opsAvailable) return { error: 'Global ångra kräver att migrationen (board_ext_schema.sql) körts.' }
+  if (!canWrite()) return { error: 'Logga in för att ångra.' }
+  setBusy(true)
+  try {
+    const { data, error } = await supabase.from('board_ops')
+      .select('*').eq('board_id', BOARD_ID).eq('undone', false)
+      .order('seq', { ascending: false }).limit(1)
+    if (error) return { error: error.message }
+    const op = data && data[0]
+    if (!op) return { error: 'Inget mer att ångra globalt.' }
+    await invertOp(op)
+    await supabase.from('board_ops').update({ undone: true, undone_at: new Date().toISOString(), undone_by: identity.name || 'någon' }).eq('id', op.id)
+    return { error: null }
+  } catch (e) { return { error: e.message } } finally { setBusy(false) }
+}
+export async function globalRedo() {
+  if (!dbMode || !opsAvailable) return { error: 'Global gör-om kräver att migrationen (board_ext_schema.sql) körts.' }
+  if (!canWrite()) return { error: 'Logga in för att göra om.' }
+  setBusy(true)
+  try {
+    // Gör om den senast ångrade (lägsta seq bland undone=true): backar undo i omvänd ordning.
+    const { data, error } = await supabase.from('board_ops')
+      .select('*').eq('board_id', BOARD_ID).eq('undone', true)
+      .order('seq', { ascending: true }).limit(1)
+    if (error) return { error: error.message }
+    const op = data && data[0]
+    if (!op) return { error: 'Inget att göra om globalt.' }
+    await applyOpForward(op)
+    await supabase.from('board_ops').update({ undone: false, undone_at: null, undone_by: null }).eq('id', op.id)
+    return { error: null }
+  } catch (e) { return { error: e.message } } finally { setBusy(false) }
+}
+
+// Probe: finns board_ops-tabellen? Avgör om global ångra är tillgänglig (annars degraderar UI:t).
+async function probeOps() {
+  if (!dbMode) return
+  try { const { error } = await supabase.from('board_ops').select('id').limit(1); opsAvailable = !error }
+  catch { opsAvailable = false }
+  refreshUndoStore()
 }
 
 // --------------------------------------------------------------------------- remote apply (merge)
@@ -535,6 +783,7 @@ async function init() {
   } catch (e) { console.warn('initial load', e.message) }
 
   setConn({ synced: true })
+  probeOps() // avgör om global ångra (board_ops) är tillgänglig
   readyResolve()
 }
 ;(async () => { try { await init() } catch (e) { console.warn('board init', e?.message); readyResolve() } })()

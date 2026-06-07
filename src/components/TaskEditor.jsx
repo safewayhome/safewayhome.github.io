@@ -4,6 +4,7 @@ import { updateTask, deleteTask, setEditing, pingTyping, fetchActivity, onActivi
 import { usePeople } from '../store'
 import { ago, diffKey } from '../util'
 import { Avatar } from './Avatar.jsx'
+import Threads from './Threads.jsx'
 
 // Fritextfält använder ett LOKALT utkast medan editorn är öppen, så en kollegas fjärr-
 // redigering inte rycker din markör mitt i en tangenttryckning. Diskreta kontroller
@@ -186,6 +187,12 @@ export default function TaskEditor({ task, allTasks, onClose, canEdit = true, on
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Diskussion: trådar inuti kortet (Twitch-liknande svar + arkivering). */}
+          <div style={{ marginTop: 18 }}>
+            <Label>💬 Diskussion</Label>
+            <Threads taskId={task.id} canEdit={canEdit} onRequireLogin={onRequireLogin} />
           </div>
         </div>
 

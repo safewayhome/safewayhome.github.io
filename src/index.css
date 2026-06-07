@@ -87,6 +87,12 @@ input, select, textarea { font-family: inherit; }
 }
 .lm-rm-node { animation: lm-rm-pulse 2.4s ease-in-out infinite; }
 
+/* Diskussionstrådar: kort highlight när man hoppar till ett citerat originalmeddelande (Twitch-svar),
+   plus en diskret hover på själva citatraden så det syns att den är klickbar. */
+@keyframes lm-flash { 0% { background: #fff3b0; } 100% { background: transparent; } }
+.lm-flash { animation: lm-flash 1.3s ease; }
+.lm-reply-quote:hover { filter: brightness(0.97); }
+
 /* Chattens "Visa tänkande": dölj den inbyggda details-triangeln (vi använder 🧠 i summary i stället). */
 .lm-think > summary { list-style: none; }
 .lm-think > summary::-webkit-details-marker { display: none; }

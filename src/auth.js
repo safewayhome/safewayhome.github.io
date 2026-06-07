@@ -29,6 +29,9 @@ export const authStore = createStore({ user: null, ready: !supabaseEnabled })
 let currentUser = null
 export const canWrite = () => !!currentUser
 export const currentEmail = () => currentUser?.email || ''
+// Den autentiserade sessionens uid (auth.uid()). Används för att binda skrivningar till rätt
+// användare i RLS (t.ex. board_ops.actor_id), så att ingen kan spoofa en annan användares handling.
+export const currentUid = () => currentUser?.id || null
 
 function apply(session) {
   currentUser = session?.user || null

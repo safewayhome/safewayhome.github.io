@@ -6,8 +6,8 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { T, CATEGORIES, CAT, STATUS, DIFFICULTIES } from '../theme'
-import { updateTask, createTask, setCursor, clearCursor } from '../collab'
-import { useCursors } from '../store'
+import { updateTask, createTask, setCursor, clearCursor, undo, redo, setGlobalUndo } from '../collab'
+import { useCursors, useUndo } from '../store'
 import { fraction, computeProgress, diffOf } from '../util'
 import { Avatar } from '../components/Avatar.jsx'
 
@@ -394,6 +394,7 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused, canEdit, onRequir
       </ReactFlow>
       <CursorsLayer />
       <Legend />
+      <UndoBar canEdit={canEdit} />
 
       {/* ordna om i kolumner */}
       <button onClick={resetLayout} title="Ordna korten i rena kolumner" style={{
@@ -417,6 +418,58 @@ function Flow({ tasks, visibleTasks, cats, onOpenTask, paused, canEdit, onRequir
 ＋ i en kolumnrubrik = nytt kort · dubbelklicka ytan = nytt kort · klicka statusprick = ändra status · håll musen över ett kort = lys upp dess kopplingar
         </div>
       )}
+    </div>
+  )
+}
+
+/* Ångra-/gör-om-fält (uppe i mitten). Lokalt läge backar DINA senaste handlingar (Ctrl/Cmd+Z);
+   slår man på "Global" backar samma knapp i stället teamets senaste DB-ändring, flera steg bakåt,
+   och ångringen syns direkt hos alla via Realtime. */
+function UndoBar({ canEdit }) {
+  const u = useUndo()
+  const [msg, setMsg] = useState('')
+  const flashRef = useRef(null)
+  const flash = useCallback((m) => {
+    setMsg(m); clearTimeout(flashRef.current); flashRef.current = setTimeout(() => setMsg(''), 1900)
+  }, [])
+  useEffect(() => () => clearTimeout(flashRef.current), [])
+
+  const run = useCallback(async (fn) => {
+    if (!canEdit) { flash('Logga in för att ångra.'); return }
+    const r = await fn()
+    if (r && r.error) flash(r.error)
+  }, [canEdit, flash])
+
+  const btn = (enabled) => ({
+    border: `1px solid ${T.line}`, background: enabled ? T.panel : T.panelSoft,
+    color: enabled ? T.ink : T.todo, fontWeight: 800, fontSize: 12.5, padding: '6px 11px',
+    borderRadius: 9, cursor: enabled ? 'pointer' : 'default', whiteSpace: 'nowrap',
+    opacity: enabled ? 1 : 0.55,
+  })
+  const undoOn = canEdit && u.canUndo && !u.busy
+  const redoOn = canEdit && u.canRedo && !u.busy
+
+  return (
+    <div style={{
+      position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 6,
+      display: 'flex', alignItems: 'center', gap: 8, background: T.panel, border: `1px solid ${T.line}`,
+      borderRadius: 12, boxShadow: T.shadowSoft, padding: '6px 8px', maxWidth: 'calc(100vw - 28px)', flexWrap: 'wrap',
+    }}>
+      <button onClick={() => run(undo)} disabled={!undoOn} title="Ångra (Ctrl/Cmd+Z)" style={btn(undoOn)}>↶ Ångra</button>
+      <button onClick={() => run(redo)} disabled={!redoOn} title="Gör om (Ctrl/Cmd+Shift+Z)" style={btn(redoOn)}>↷ Gör om</button>
+      <span style={{ width: 1, height: 20, background: T.line }} />
+      <label title="Global ångra: backa teamets senaste ändring i databasen för ALLA (flera steg bakåt)" style={{
+        display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 800,
+        color: u.global ? T.roseDeep : T.inkSoft, cursor: 'pointer',
+      }}>
+        <input type="checkbox" checked={u.global} onChange={(e) => setGlobalUndo(e.target.checked)} />
+        Global
+        {u.global && <span style={{ fontSize: 9.5, fontWeight: 900, color: '#fff', background: T.roseDeep, padding: '1px 6px', borderRadius: 999 }}>TEAM</span>}
+      </label>
+      {u.global && !u.opsAvailable && (
+        <span title="Kör board_ext_schema.sql i Supabase för att aktivera global ångra" style={{ fontSize: 11, fontWeight: 700, color: T.doing }}>⚠︎ migrering krävs</span>
+      )}
+      {msg && <span style={{ fontSize: 11, color: T.inkSoft, maxWidth: 230, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg}</span>}
     </div>
   )
 }

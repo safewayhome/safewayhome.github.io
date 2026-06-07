@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { T, CATEGORIES, PRESENCE_COLORS } from './theme'
 import { useTasks, usePeople, useConnection, useAuth } from './store'
 import {
-  identity, setIdentity, createTask, maybeSeed, clearCursor, allTasks, BOARD_ID,
+  identity, setIdentity, createTask, maybeSeed, clearCursor, allTasks, BOARD_ID, undo, redo,
 } from './collab'
 import { signIn, signUp, signOut } from './auth'
 import { SEED } from './seed'
@@ -116,6 +116,25 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [showName, showSettings, editingId, cats, canEdit])
+
+  // Ångra/gör om på tavlan: Ctrl/Cmd+Z = ångra, Ctrl/Cmd+Shift+Z eller Ctrl+Y = gör om. Hoppa över
+  // när man skriver i ett fält (låt webbläsarens egna textångra gälla där) eller när en modal/editor är öppen.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (view !== 'board' || !(e.metaKey || e.ctrlKey)) return
+      const k = (e.key || '').toLowerCase()
+      const isUndo = k === 'z' && !e.shiftKey
+      const isRedo = (k === 'z' && e.shiftKey) || k === 'y'
+      if (!isUndo && !isRedo) return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return
+      if (showName || showSettings || editingId) return
+      e.preventDefault()
+      if (isRedo) redo(); else undo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [view, showName, showSettings, editingId])
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
