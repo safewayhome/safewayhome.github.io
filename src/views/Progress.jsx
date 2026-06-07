@@ -34,6 +34,24 @@ export default function Progress({ visibleTasks }) {
   }, [])
   const devs = (gh && Array.isArray(gh.devs) && gh.devs.length) ? gh.devs : DEV_PLACEHOLDER
 
+  // Commit-historik: STÄNGD som standard. Hämtas lazy (först vid första utfällningen) så vi inte
+  // belastar GitHub-API:t i onödan när ingen tittar på historiken.
+  const [showHistory, setShowHistory] = useState(false)
+  const [commits, setCommits] = useState(null)
+  const [commitsLoading, setCommitsLoading] = useState(false)
+  const toggleHistory = () => {
+    const next = !showHistory
+    setShowHistory(next)
+    if (next && commits === null && !commitsLoading) {
+      setCommitsLoading(true)
+      fetch(`${API_BASE}/api/dev/github-commits`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => setCommits(d && Array.isArray(d.commits) ? d.commits : []))
+        .catch(() => setCommits([]))   // mjuk degradering: visa "ingen historik" i stället för att krascha
+        .finally(() => setCommitsLoading(false))
+    }
+  }
+
   return (
     <div style={{ height: '100%', overflow: 'auto', background: T.bg }}>
       <div style={{ maxWidth: 920, margin: '0 auto', padding: '28px 24px 60px' }}>
@@ -125,6 +143,44 @@ export default function Progress({ visibleTasks }) {
         {loading && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Hämtar GitHub-statistik…</div>}
         {!loading && gh === null && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Kunde inte hämta GitHub-statistik just nu.</div>}
         {!loading && gh && gh.computing && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>GitHub beräknar statistiken just nu, ladda om sidan om en liten stund.</div>}
+
+        {/* Commit-historik: stängd som standard, en knapp fäller ut den. Varje commit är nedkokad till
+            sin ämnesrad (förenklad i backenden). Datan hämtas lazy vid första klicket. */}
+        <button
+          onClick={toggleHistory}
+          aria-expanded={showHistory}
+          style={{
+            marginTop: 18, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+            background: T.panel, border: `1px solid ${T.line}`, borderRadius: 999, padding: '9px 17px',
+            fontSize: 13, fontWeight: 800, color: T.ink, boxShadow: T.shadowSoft,
+          }}
+        >
+          <span style={{ color: T.rose, fontSize: 11 }}>{showHistory ? '▼' : '▶'}</span>
+          {showHistory ? 'Dölj commit historik' : 'Visa commit historik'}
+        </button>
+        {showHistory && (
+          <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
+            {commitsLoading && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Hämtar commit-historik…</div>}
+            {!commitsLoading && commits && commits.length === 0 && (
+              <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Ingen commit-historik tillgänglig just nu.</div>
+            )}
+            {!commitsLoading && commits && commits.map((c, i) => (
+              <div key={`${c.sha}-${i}`} style={{
+                display: 'flex', alignItems: 'baseline', gap: 12, background: T.panel,
+                border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 14px', boxShadow: T.shadowSoft,
+              }}>
+                <span style={{
+                  flex: '0 0 auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11,
+                  color: T.roseDeep, background: T.roseSoft, border: `1px solid ${T.rose}33`, borderRadius: 6, padding: '2px 7px',
+                }}>{c.sha}</span>
+                <span style={{ flex: 1, fontSize: 13, color: T.ink, fontWeight: 600, overflowWrap: 'anywhere' }}>{c.summary}</span>
+                <span style={{ flex: '0 0 auto', fontSize: 11.5, color: T.inkSoft, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {c.author}{c.date ? ` · ${ago(new Date(c.date).getTime())}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 22, lineHeight: 1.5 }}>
           Hur det räknas: framstegen är rent <b>antal klara uppdrag delat med totalen</b> — en uppgift räknas
