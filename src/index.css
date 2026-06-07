@@ -47,20 +47,25 @@ input, select, textarea { font-family: inherit; }
 @keyframes lm-sheen { 0% { transform: translateX(-160%); } 60%,100% { transform: translateX(360%); } }
 @keyframes lm-ring { to { transform: rotate(360deg); } }
 
-/* Framsteg: pulserande "gång" (tidslinje) mellan commits. Rälsen är en nedåt-flödande gradient
-   (marscherande streck = gången), och varje commit-nod pulserar. prefers-reduced-motion nedan
-   stänger av animeringarna automatiskt. */
-@keyframes lm-rail-flow { 0% { background-position: 0 0; } 100% { background-position: 0 14px; } }
+/* Framsteg: pulserande "gång" (tidslinje) mellan commits. Rälsen är en vertikal TONING (vibrant rosa
+   överst -> mörk vinröd nederst) maskad av flödande streck (mask-position animeras nedåt = gången).
+   Varje nod pulserar med en glöd vars färg+radie sätts PER nod (CSS-variabler nedan), så toppen är
+   starkast/mest vibrant och botten mörkare/mindre. prefers-reduced-motion stänger av animeringarna. */
+@keyframes lm-rail-flow {
+  0% { -webkit-mask-position: 0 0; mask-position: 0 0; }
+  100% { -webkit-mask-position: 0 14px; mask-position: 0 14px; }
+}
 .lm-commit-rail {
-  background-image: linear-gradient(180deg, #fb7185cc 0 55%, transparent 55% 100%);
-  background-size: 100% 14px;
+  background: linear-gradient(180deg, #ff3d6e 0%, #fb7185 14%, #a82f4c 56%, #3d0d1c 100%);
+  -webkit-mask-image: repeating-linear-gradient(180deg, #000 0 8px, transparent 8px 14px);
+  mask-image: repeating-linear-gradient(180deg, #000 0 8px, transparent 8px 14px);
   animation: lm-rail-flow 1s linear infinite;
 }
 @keyframes lm-node-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 #fb718599; transform: scale(1); }
-  50% { box-shadow: 0 0 0 6px #fb718500; transform: scale(1.18); }
+  0%, 100% { box-shadow: 0 0 var(--lm-glow-blur, 6px) var(--lm-glow, transparent); transform: scale(1); }
+  50% { box-shadow: 0 0 calc(var(--lm-glow-blur, 6px) * 2.2) var(--lm-glow, transparent); transform: scale(1.16); }
 }
-.lm-commit-node { animation: lm-node-pulse 2s ease-in-out infinite; }
+.lm-commit-node { animation: lm-node-pulse 1.8s ease-in-out infinite; }
 
 /* Markdown i chatt-bubblor: trimma yttersta marginalerna så texten sitter snyggt i kortet. */
 .lm-md > :first-child { margin-top: 0 !important; }

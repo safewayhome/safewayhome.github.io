@@ -69,29 +69,37 @@ function CommitRow({ c, showAuthor }) {
 
 // Commit-lista som en TIDSLINJE: en pulserande "gång" (animerad räls, .lm-commit-rail) löper mellan
 // commit-noderna (.lm-commit-node pulserar) så historiken känns levande. Återanvänder CommitRow för korten.
+const _lerp = (a, b, t) => a + (b - a) * t
+const _NODE_TOP = [255, 61, 110]   // vibrant rosa (nyast/överst): stark, lysande
+const _NODE_BOT = [61, 13, 28]     // mörk vinröd (äldst/nederst): liten, dämpad
 function CommitTimeline({ items, showAuthor }) {
   const n = items.length
-  // Färgstyrkan avtar nedåt: nyast (överst) är starkast, äldre tonas ut, så det syns att toppen är färskast.
-  const fadeAt = (i) => (n <= 1 ? 1 : Math.max(0.4, 1 - (i / (n - 1)) * 0.6))
   return (
     <div style={{ position: 'relative', display: 'grid', gap: 8 }}>
-      {/* den pulserande gången: en kontinuerlig flödande linje, maskad så den tonas ut nedåt (starkast överst) */}
-      {n > 1 && (
-        <div className="lm-commit-rail" style={{
-          position: 'absolute', left: 8, top: 18, bottom: 18, width: 2, borderRadius: 2,
-          WebkitMaskImage: 'linear-gradient(180deg, #000 0%, rgba(0,0,0,0.18) 100%)',
-          maskImage: 'linear-gradient(180deg, #000 0%, rgba(0,0,0,0.18) 100%)',
-        }} />
-      )}
-      {items.map((c, i) => (
-        <div key={`${c.sha}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 11, position: 'relative', opacity: fadeAt(i) }}>
-          <span className="lm-commit-node" style={{
-            flex: '0 0 auto', marginTop: 13, marginLeft: 3, width: 11, height: 11, borderRadius: 999,
-            background: T.rose, border: '2px solid #fff', zIndex: 1,
-          }} />
-          <div style={{ flex: 1, minWidth: 0 }}><CommitRow c={c} showAuthor={showAuthor} /></div>
-        </div>
-      ))}
+      {/* den pulserande gången: vibrant rosa överst -> mörk nederst (toning i CSS), flödande streck */}
+      {n > 1 && <div className="lm-commit-rail" style={{ position: 'absolute', left: 8, top: 18, bottom: 18, width: 2, borderRadius: 2 }} />}
+      {items.map((c, i) => {
+        // t = 0 överst (nyast) -> 1 nederst (äldst). Färg, storlek och glöd interpoleras nedåt.
+        const t = n <= 1 ? 0 : i / (n - 1)
+        const rgb = _NODE_TOP.map((cc, k) => Math.round(_lerp(cc, _NODE_BOT[k], t)))
+        const col = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`
+        const size = Math.round(_lerp(13, 6, t))            // mindre nedåt
+        const glow = _lerp(0.92, 0.04, t).toFixed(2)        // svagare glöd nedåt
+        const blur = Math.round(_lerp(13, 0, t))
+        const bw = _lerp(2, 1, t).toFixed(1)
+        return (
+          <div key={`${c.sha}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 11, position: 'relative' }}>
+            <span className="lm-commit-node" style={{
+              flex: '0 0 auto', marginTop: 13 + (13 - size) / 2, marginLeft: 3 + (13 - size) / 2,
+              width: size, height: size, borderRadius: 999, background: col, border: `${bw}px solid #fff`, zIndex: 1,
+              '--lm-glow': `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${glow})`,
+              '--lm-glow-blur': `${blur}px`,
+            }} />
+            {/* kortet tonas milt nedåt så texten ändå är läsbar; den starka färg/glöd-effekten bär noderna+rälsen */}
+            <div style={{ flex: 1, minWidth: 0, opacity: _lerp(1, 0.66, t) }}><CommitRow c={c} showAuthor={showAuthor} /></div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -166,9 +174,10 @@ export default function Progress({ tasks, visibleTasks }) {
     ...d,
     commits: Math.max(Number(d.commits) || 0, (commitsByDev[d.name] || []).length),
   }))
-  // "rader beräknas" när GitHub fortfarande räknar (computing) ELLER när vi visar den provisoriska
-  // per-commit-summan (source="commits") som ersätter 0:an tills den exakta all-time-siffran är klar.
-  const linesPending = !!(gh && (gh.computing || gh.source === 'commits'))
+  // "rader beräknas" när GitHub fortfarande räknar (computing) ELLER när per-commit-reserven är
+  // PROVISORISK (partial: täckte inte hela historiken, dvs utan GITHUB_TOKEN). Med token ger reserven
+  // hela summan (partial=false) -> ingen hint, siffran visas som färdig.
+  const linesPending = !!(gh && (gh.computing || (gh.source === 'commits' && gh.partial)))
 
   // Avklarade uppgifter per utvecklare, grupperade på svårighetsgrad (tavlans kort). En "done"-uppgift
   // tillskrivs den som senast rörde den (updatedBy), matchat mot utvecklarnamnet (skiftlägesokänsligt).
