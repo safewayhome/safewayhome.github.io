@@ -67,6 +67,11 @@ input, select, textarea { font-family: inherit; }
 }
 .lm-commit-node { animation: lm-node-pulse 1.8s ease-in-out infinite; }
 
+/* "Uppdaterar…"-indikatorn: de tre punkterna blinkar i tur och ordning. */
+.lm-dots span { animation: lm-blink 1.2s infinite; }
+.lm-dots span:nth-child(2) { animation-delay: 0.2s; }
+.lm-dots span:nth-child(3) { animation-delay: 0.4s; }
+
 /* Markdown i chatt-bubblor: trimma yttersta marginalerna så texten sitter snyggt i kortet. */
 .lm-md > :first-child { margin-top: 0 !important; }
 .lm-md > :last-child { margin-bottom: 0 !important; }

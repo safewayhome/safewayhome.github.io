@@ -2,6 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { T, DIFFICULTIES, DIFF } from '../theme'
 import { computeProgress, progressByCategory, progressByDifficulty, ago, diffKey } from '../util'
 import { API_BASE } from '../chat'
+import { supabase } from '../supabaseClient'
+
+// "Uppdaterar" med tre animerade punkter (visas medan färska siffror hämtas, ovanpå den senast sparade).
+function Updating() {
+  return (
+    <span style={{ marginLeft: 8, fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>
+      Uppdaterar<span className="lm-dots"><span>.</span><span>.</span><span>.</span></span>
+    </span>
+  )
+}
 
 // Klassificera en commits svårighetsgrad. Förstahandskälla: ärv från det tavlekort vars titel bäst
 // matchar commit-texten (token-överlapp) = "direkt info från tavlan". Saknas en tydlig matchning gör vi
@@ -151,6 +161,18 @@ export default function Progress({ tasks, visibleTasks }) {
     return () => { alive = false }
   }, [])
 
+  // Senast SPARADE GitHub-summan (från Supabase board_meta). Läses direkt (snabbt) så vi kan visa den
+  // i stället för "0 rader" under de ~10-15 s som den färska per-commit-summan tar att räkna fram.
+  const [snapshot, setSnapshot] = useState(null)
+  useEffect(() => {
+    let alive = true
+    if (!supabase) return
+    supabase.from('board_meta').select('value').eq('key', 'github_stats').maybeSingle()
+      .then(({ data }) => { if (alive && data && data.value) setSnapshot(data.value) })
+      .catch(() => { /* ingen snapshot än -> placeholder tills färsk data kommer */ })
+    return () => { alive = false }
+  }, [])
+
   // Vilken utvecklares commits som är utfällda (en i taget). null = ingen.
   const [openDev, setOpenDev] = useState(null)
 
@@ -166,17 +188,20 @@ export default function Progress({ tasks, visibleTasks }) {
     return m
   }, [commitsWithDiff])
 
-  const statsDevs = (gh && Array.isArray(gh.devs) && gh.devs.length) ? gh.devs : DEV_PLACEHOLDER
-  // Slå ihop källorna: commit-antalet tas som det STÖRSTA av stats och den hämtade listräkningen, så
-  // det laddar direkt även medan GitHub räknar stats. net_lines kommer bara från stats (enda aggregat).
+  // Källa för siffrorna: färsk data (gh) om den kommit, annars den SPARADE snapshoten, annars nollor.
+  // Så slipper vi "0 rader"-blinket: snapshoten visas direkt med "Uppdaterar…" tills den färska kommit.
+  const statsDevs = (gh && Array.isArray(gh.devs) && gh.devs.length) ? gh.devs
+    : (snapshot && Array.isArray(snapshot.devs) && snapshot.devs.length) ? snapshot.devs
+    : DEV_PLACEHOLDER
+  // Slå ihop källorna: commit-antalet tas som det STÖRSTA av stats/snapshot och den hämtade listräkningen,
+  // så det laddar direkt. net_lines kommer från stats/snapshot (GitHubs enda aggregerade källa).
   const devs = statsDevs.map((d) => ({
     ...d,
     commits: Math.max(Number(d.commits) || 0, (commitsByDev[d.name] || []).length),
   }))
-  // "rader beräknas" när GitHub fortfarande räknar (computing) ELLER när per-commit-reserven är
-  // PROVISORISK (partial: täckte inte hela historiken, dvs utan GITHUB_TOKEN). Med token ger reserven
-  // hela summan (partial=false) -> ingen hint, siffran visas som färdig.
-  const linesPending = !!(gh && (gh.computing || (gh.source === 'commits' && gh.partial)))
+  // "Uppdaterar…" så länge den FÄRSKA datan inte kommit fram ännu (vi visar snapshot/placeholder), eller
+  // om den färska fortfarande beräknas/är provisorisk. När full färsk data finns -> ingen indikator.
+  const updating = !(gh && gh.devs && gh.devs.length) || !!gh.computing || (gh.source === 'commits' && !!gh.partial)
 
   // Antal bidrag per utvecklare och svårighetsgrad (hur många Enkla/Medel/Svåra/Extremt svåra man gjort).
   // Vi räknar utvecklarens COMMITS (klassificerade ovan) PLUS ev. avklarade tavlekort som tillskrivits hen.
@@ -242,7 +267,7 @@ export default function Progress({ tasks, visibleTasks }) {
                 </div>
                 <div style={{ marginTop: 9, fontSize: 13.5, color: T.ink, fontWeight: 800 }}>
                   {fmtInt(dev.commits)} commits : <span style={{ color: T.roseDeep }}>{fmtInt(dev.net_lines)} rader kod implementerat</span>
-                  {linesPending ? <span style={{ marginLeft: 8, fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>(rader beräknas…)</span> : null}
+                  {updating ? <Updating /> : null}
                 </div>
                 {/* Bidrag per svårighetsgrad (tavlans kategorisering), färgkodat: hur många
                     Enkla/Medel/Svåra/Extremt svåra den här utvecklaren har gjort (commits + ev. tavlekort). */}
@@ -291,8 +316,7 @@ export default function Progress({ tasks, visibleTasks }) {
             )
           })}
         </div>
-        {loading && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Hämtar GitHub-statistik…</div>}
-        {!loading && gh === null && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Kunde inte hämta GitHub-statistik just nu.</div>}
+        {!loading && gh === null && !snapshot && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Kunde inte hämta GitHub-statistik just nu.</div>}
 
         {/* fyra svårighets-progressbars (en per färg) */}
         <h3 style={{ fontSize: 15, fontWeight: 800, color: T.ink, margin: '26px 0 12px' }}>Per svårighetsgrad</h3>
