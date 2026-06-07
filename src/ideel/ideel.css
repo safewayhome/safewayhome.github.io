@@ -20,22 +20,31 @@ button, input, textarea { font-family: inherit; }
 a { color: inherit; }
 
 /* Synlig tangentbordsfokus (WCAG 2.4.7). Fälten har outline:none + inline-border, så vi använder en
-   box-shadow-ring (påverkas inte av inline-stilen) för inputs/textarea, och outline för knappar/länkar. */
+   mjuk roseguld box-shadow-ring (påverkas inte av inline-stilen) för inputs/textarea, och outline för
+   knappar/länkar. Tonen är varm, inte hård, för att passa den ombonade natt-känslan. */
 input:focus-visible, textarea:focus-visible {
-  border-color: #f0cf8c;
-  box-shadow: 0 0 0 3px rgba(240, 207, 140, 0.45);
+  border-color: #e6b59a;
+  box-shadow: 0 0 0 3px rgba(230, 181, 154, 0.40);
 }
 button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible {
-  outline: 2px solid #f0cf8c;
-  outline-offset: 2px;
+  outline: 2px solid #e6b59a;
+  outline-offset: 3px;
 }
 
-/* Mjuk entré för sektioner/kort + en lugn andning på de radiella ljus-aurorna bakom statistiken.
-   prefers-reduced-motion stänger av rörelsen för den som föredrar det. */
+/* Mjuk entré för textavsnitt + en lugn andning på de diffusa ljus-aurorna (gatlyktor i natten).
+   prefers-reduced-motion stänger av all rörelse för den som föredrar det. */
 @keyframes ideel-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@keyframes ideel-aura { 0%, 100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.05); } }
+@keyframes ideel-aura { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.06); } }
 
-.ideel-rise { animation: ideel-rise 0.6s ease both; }
+.ideel-rise { animation: ideel-rise 0.7s ease both; }
+
+/* Den slingrande, glödande "Leden" (rutt-linjen i roseguld/rosa): glödlagret andas mjukt.
+   Fotstegen längs leden tänds i tur och ordning (animation-delay per fot) så de "vandrar" nerför sidan,
+   precis som i appen. Allt mycket subtilt. */
+@keyframes ideel-breathe { 0%, 100% { opacity: 0.24; } 50% { opacity: 0.42; } }
+@keyframes ideel-step { 0%, 100% { opacity: 0.22; } 45% { opacity: 0.72; } }
+.ideel-led-glow { animation: ideel-breathe 6.5s ease-in-out infinite; }
+.ideel-step { opacity: 0.4; animation: ideel-step 3.6s ease-in-out infinite; }
 
 /* tunna, varma scrollbars i linje med natt-estetiken */
 *::-webkit-scrollbar { width: 11px; height: 11px; }
