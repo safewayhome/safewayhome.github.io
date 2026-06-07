@@ -8,6 +8,7 @@ import { signIn, signUp, signOut } from './auth'
 import { SEED } from './seed'
 import Whiteboard from './views/Whiteboard.jsx'
 import Timeline from './views/Timeline.jsx'
+import Roadmap from './views/Roadmap.jsx'
 import Progress from './views/Progress.jsx'
 import Changelog from './views/Changelog.jsx'
 import Data from './views/Data.jsx'
@@ -34,6 +35,7 @@ function usePersistentState(key, initial) {
 const VIEWS = [
   { key: 'board', label: 'Nätet', glyph: '🧩' },
   { key: 'timeline', label: 'Tidslinje', glyph: '🗓️' },
+  { key: 'roadmap', label: 'Färdplan', glyph: '🧭' },
   { key: 'progress', label: 'Framsteg', glyph: '📊' },
   { key: 'changelog', label: 'Changelog', glyph: '📜' },
   { key: 'data', label: 'Data', glyph: '🛰️' },
@@ -83,8 +85,9 @@ export default function App() {
 
   const editing = editingId ? tasks.find((t) => t.id === editingId) || null : null
   // Kategorifiltren är relevanta i de vyer som filtrerar kort (Nätet/Tidslinje/Framsteg), inte i
-  // Changelog/Data/Utvecklingschatt. De renderas i en egen rad UNDER navbaren (i vyns yta).
-  const showCats = view !== 'changelog' && view !== 'data' && view !== 'chat'
+  // Changelog/Data/Utvecklingschatt/Färdplan (den senare är en egen kurerad roadmap, inte tavelkort).
+  // De renderas i en egen rad UNDER navbaren (i vyns yta).
+  const showCats = view !== 'changelog' && view !== 'data' && view !== 'chat' && view !== 'roadmap'
 
   function toggleCat(key) {
     setCats((c) => ({ ...c, [key]: !c[key] }))
@@ -142,6 +145,9 @@ export default function App() {
           )}
           {view === 'timeline' && (
             <Timeline tasks={tasks} visibleTasks={visibleTasks} onOpenTask={setEditingId} />
+          )}
+          {view === 'roadmap' && (
+            <Roadmap />
           )}
           {view === 'progress' && (
             <Progress tasks={tasks} visibleTasks={visibleTasks} cats={cats} />
