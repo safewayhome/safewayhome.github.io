@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { T } from '../theme'
-import { SYSTEM_DESC, ARCHITECTURE, CHANGELOG, AREA } from '../changelogData'
+import { ARCHITECTURE, CHANGELOG, AREA } from '../changelogData'
 
 const STATUS_META = {
   done: { label: 'Klart', color: T.done, glyph: '✓' },
@@ -59,37 +59,10 @@ export default function Changelog() {
     <div style={{ height: '100%', overflow: 'auto', background: T.bg, scrollBehavior: 'smooth' }}>
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '34px 24px 90px' }}>
 
-        {/* ───────── Vad är LedMig? (mänsklig beskrivning) ───────── */}
-        <Reveal>
-          <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: 0.5, color: T.rose, textTransform: 'uppercase', marginBottom: 10 }}>
-            Vad är LedMig?
-          </div>
-          <h1 style={{ fontSize: 28, fontWeight: 900, color: T.ink, lineHeight: 1.25, margin: '0 0 18px', maxWidth: 760 }}>
-            {SYSTEM_DESC.tagline}
-          </h1>
-        </Reveal>
-
-        <Reveal delay={60}>
-          <div style={{ display: 'grid', gap: 14, maxWidth: 760, marginBottom: 26 }}>
-            {SYSTEM_DESC.paragraphs.map((p, i) => (
-              <p key={i} style={{ fontSize: 15, lineHeight: 1.72, color: T.ink, margin: 0 }}>{p}</p>
-            ))}
-          </div>
-        </Reveal>
-
-        <Reveal delay={80}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14, marginBottom: 46 }}>
-            {SYSTEM_DESC.principles.map((pr) => (
-              <div key={pr.title} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 16, padding: '16px 18px', boxShadow: T.shadowSoft }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>{pr.icon}</div>
-                <div style={{ fontSize: 14.5, fontWeight: 900, color: T.ink, marginBottom: 5 }}>{pr.title}</div>
-                <div style={{ fontSize: 13, lineHeight: 1.55, color: T.inkSoft }}>{pr.text}</div>
-              </div>
-            ))}
-          </div>
-        </Reveal>
-
         {/* ───────── Hur systemet hänger ihop (visualisering) ───────── */}
+        {/* OBS: "Vad är LedMig?"-introt (SYSTEM_DESC: tagline/paragrafer/principer) är borttaget här:
+            sidan används just nu bara internt av utvecklingsteamet, så vi håller den informativ för oss.
+            SYSTEM_DESC finns kvar i changelogData.js och kan återinföras vid release. */}
         <Reveal>
           <h2 style={{ fontSize: 21, fontWeight: 900, color: T.ink, margin: '0 0 6px' }}>🗺️ Hur systemet hänger ihop</h2>
           <p style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.6, margin: '0 0 20px', maxWidth: 720 }}>
