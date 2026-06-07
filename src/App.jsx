@@ -37,7 +37,7 @@ const VIEWS = [
   { key: 'progress', label: 'Framsteg', glyph: '📊' },
   { key: 'changelog', label: 'Changelog', glyph: '📜' },
   { key: 'data', label: 'Data', glyph: '🛰️' },
-  { key: 'chat', label: 'Team Chat', glyph: '💬' },
+  { key: 'chat', label: 'Utvecklingschatt', glyph: '💬' },
 ]
 
 export default function App() {
@@ -183,7 +183,7 @@ function TopBar(props) {
         <span style={{ fontSize: 22 }}>🛡️</span>
         <div style={{ lineHeight: 1.05 }}>
           <div style={{ fontWeight: 800, fontSize: 16, color: T.ink }}>LedMig</div>
-          <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}>Team Board · realtid</div>
+          <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}>Utvecklings whiteboard · realtid</div>
         </div>
       </div>
 

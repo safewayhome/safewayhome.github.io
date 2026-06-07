@@ -36,6 +36,27 @@ export const messagesStore = createStore([])         // hela chatt-loggen, krono
 // live = pågående AI-körning. active styr om forsknings-UI:t visas.
 export const liveStore = createStore({ active: false, mode: '', steps: [], step: 0, progress: 0, label: '', model: '', thinking: '', answer: '', error: '' })
 
+// ── Tokenmätare: hur mycket av gratis-modellernas budget vi använt (session + idag) ──
+// Vi mäter FAKTISKA tokens (rapporterade per anrop av OpenRouter/Gemini, summerade i backend och
+// skickade som ett 'usage'-event) och jämför mot en mjuk dagsbudget. Gratis-nivåns dagsfönster
+// återställs vid UTC-midnatt. DAILY_TOKEN_BUDGET är en rimlig uppskattning av fönstret (justerbar),
+// inte ett hårt API-tak: providern exponerar inget exakt token-kvarvarande.
+export const DAILY_TOKEN_BUDGET = 200000
+const USAGE_KEY = 'lm.chat.usage'   // { date:'YYYY-MM-DD'(UTC), tokens:N } -> nollställs per dygn
+
+function utcDateKey() { return new Date().toISOString().slice(0, 10) }
+function loadTodayTokens() {
+  try {
+    const r = JSON.parse(localStorage.getItem(USAGE_KEY) || '{}')
+    return r.date === utcDateKey() ? (r.tokens || 0) : 0
+  } catch { return 0 }
+}
+function saveTodayTokens(t) {
+  try { localStorage.setItem(USAGE_KEY, JSON.stringify({ date: utcDateKey(), tokens: t })) } catch { /* ignore */ }
+}
+// session = denna flik sedan laddning. today = sedan senaste UTC-midnatt (delas mellan flikar via localStorage).
+export const usageStore = createStore({ session: 0, today: loadTodayTokens() })
+
 const knownIds = new Set()   // dedup: rad-id vi redan visar (lokala insert + realtime + done)
 
 function addMessage(row) {
@@ -175,6 +196,15 @@ function handleEvent(obj) {
         message_text: obj.final, is_ai: true, user_email: 'LedMig AI',
         created_at: new Date().toISOString(),
       })
+    }
+  } else if (obj.type === 'usage') {
+    // Tokenförbrukning för hela frågan -> lägg på session + dagssumma (UTC).
+    const n = obj.total_tokens || 0
+    if (n > 0) {
+      const u = usageStore.get()
+      const today = u.today + n
+      saveTodayTokens(today)
+      usageStore.set({ session: u.session + n, today })
     }
   } else if (obj.type === 'error') {
     liveStore.update({ error: obj.message || 'Något gick fel i pipelinen.' })

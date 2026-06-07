@@ -25,6 +25,7 @@ import { useAuth } from '../store'
 import { initials } from '../components/Avatar.jsx'
 import {
   messagesStore, liveStore, sendMessage, startChat, stopChat, fetchUsers, colorForEmail,
+  usageStore, DAILY_TOKEN_BUDGET,
 } from '../chat'
 
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
@@ -94,7 +95,7 @@ function LockView({ onLogin }) {
             boxShadow: '0 12px 28px -10px rgba(225,29,72,0.55), inset 0 1px 0 rgba(255,255,255,0.4)',
           }}>🔒</div>
         </div>
-        <div style={{ fontWeight: 800, fontSize: 22, color: T.ink, marginBottom: 8, letterSpacing: -0.3 }}>Team Chat är privat</div>
+        <div style={{ fontWeight: 800, fontSize: 22, color: T.ink, marginBottom: 8, letterSpacing: -0.3 }}>Utvecklingschatten är privat</div>
         <div style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.6, marginBottom: 26 }}>
           Chatten och AI-assistenten är bara för teamet. Logga in (eller skapa ett konto) så får du
           full tillgång: skriv, bifoga skärmdumpar och kör den sekventiella AI-pipelinen.
@@ -206,7 +207,7 @@ function ChatRoom({ myEmail }) {
             fontWeight: 800, fontSize: 16, letterSpacing: -0.3, whiteSpace: 'nowrap',
             background: `linear-gradient(90deg, ${T.roseDeep}, ${T.rose})`, WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent', backgroundClip: 'text',
-          }}>Team Chat</div>
+          }}>Utvecklingschatt</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: T.inkSoft, fontWeight: 600, whiteSpace: 'nowrap' }}>
             <span style={{
               width: 6, height: 6, borderRadius: 999, background: live.active ? T.doing : T.done,
@@ -216,7 +217,8 @@ function ChatRoom({ myEmail }) {
             {live.active ? 'AI-pipeline kör…' : '3-stegs AI-pipeline · realtid'}
           </div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <TokenMeter />
           <label style={{ fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>Visa</label>
           <div style={{ position: 'relative' }}>
             <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{
@@ -482,6 +484,58 @@ function ModelChip({ model }) {
       }}>{m.label}</span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{model}</span>
     </span>
+  )
+}
+
+/* ───────────────────────────── Tokenmätare (AI-budget) ───────────────────────────── */
+function fmtTokens(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M'
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'k'
+  return String(n)
+}
+// Tid kvar till nästa UTC-midnatt (då gratis-modellernas dagsfönster återställs).
+function msToReset() {
+  const now = new Date()
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime()
+}
+function fmtCountdown(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
+}
+
+// Kompakt mätare: tokens denna session + en stapel för dagens förbrukning mot en mjuk dagsbudget,
+// samt nedräkning till gratis-kvotens återställning. Drivs av usageStore (faktiska tokens från backend).
+function TokenMeter() {
+  const usage = useSyncExternalStore(usageStore.subscribe, usageStore.get)
+  const [reset, setReset] = useState(msToReset())
+  useEffect(() => {
+    const id = setInterval(() => setReset(msToReset()), 30000)
+    return () => clearInterval(id)
+  }, [])
+  const pct = Math.min(100, Math.round((usage.today / DAILY_TOKEN_BUDGET) * 100))
+  const near = pct >= 80
+  const tip = `AI-tokens: ${usage.session.toLocaleString('sv-SE')} denna session · ${usage.today.toLocaleString('sv-SE')} idag av ~${DAILY_TOKEN_BUDGET.toLocaleString('sv-SE')} (mjuk dagsbudget för gratis-modellerna; providern ger ingen exakt kvot). Gratis-fönstret återställs om ${fmtCountdown(reset)} (UTC-midnatt).`
+  return (
+    <div title={tip} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 9, padding: '5px 11px', borderRadius: 999,
+      background: 'rgba(255,255,255,0.8)', border: `1px solid ${T.line}`, boxShadow: LIFT_SOFT,
+      fontSize: 11.5, fontWeight: 700, color: T.inkSoft,
+    }}>
+      <span style={{ color: T.ink, whiteSpace: 'nowrap' }}>🪙 {fmtTokens(usage.session)}</span>
+      <span style={{ width: 1, height: 14, background: T.line }} />
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+        <span>idag</span>
+        <span style={{ width: 46, height: 6, borderRadius: 999, background: T.panelSoft, overflow: 'hidden' }}>
+          <span style={{
+            display: 'block', width: pct + '%', height: '100%', borderRadius: 999, transition: 'width .4s ease',
+            background: near ? T.doing : `linear-gradient(90deg, ${T.rose}, ${T.roseDeep})`,
+          }} />
+        </span>
+        <span style={{ color: near ? T.doing : T.inkSoft, fontVariantNumeric: 'tabular-nums' }}>{pct}%</span>
+      </span>
+      <span style={{ width: 1, height: 14, background: T.line }} />
+      <span style={{ whiteSpace: 'nowrap' }}>↻ {fmtCountdown(reset)}</span>
+    </div>
   )
 }
 
