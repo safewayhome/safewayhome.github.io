@@ -11,6 +11,27 @@ const DEV_PLACEHOLDER = [
   { name: 'Hampus', commits: 0, net_lines: 0, last_active: 0 },
 ]
 const fmtInt = (n) => (Number(n) || 0).toLocaleString('sv-SE')   // tusentalsavgränsning: 3 450
+const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace'
+
+// En commit-rad: kort SHA-bricka · nedkokad ämnesrad · (ev. författare) · relativ tid.
+// showAuthor=false i per-utvecklar-listan (det är redan den utvecklaren), true i den globala listan.
+function CommitRow({ c, showAuthor }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', gap: 12, background: T.panel,
+      border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 14px', boxShadow: T.shadowSoft,
+    }}>
+      <span style={{
+        flex: '0 0 auto', fontFamily: MONO, fontSize: 11, color: T.roseDeep,
+        background: T.roseSoft, border: `1px solid ${T.rose}33`, borderRadius: 6, padding: '2px 7px',
+      }}>{c.sha}</span>
+      <span style={{ flex: 1, fontSize: 13, color: T.ink, fontWeight: 600, overflowWrap: 'anywhere' }}>{c.summary}</span>
+      <span style={{ flex: '0 0 auto', fontSize: 11.5, color: T.inkSoft, fontWeight: 700, whiteSpace: 'nowrap' }}>
+        {showAuthor && c.author ? c.author : ''}{showAuthor && c.author && c.date ? ' · ' : ''}{c.date ? ago(new Date(c.date).getTime()) : ''}
+      </span>
+    </div>
+  )
+}
 
 export default function Progress({ visibleTasks }) {
   const overall = useMemo(() => computeProgress(visibleTasks), [visibleTasks])
@@ -20,37 +41,64 @@ export default function Progress({ visibleTasks }) {
 
   const { done, n, counts } = overall
 
-  // GitHub-bidrag per utvecklare (commits + nettorader kod) från FastAPI-backenden (15-min cachad där).
+  // ── GitHub-bidrag per utvecklare (commits + nettorader kod) ──
+  // github-stats bygger på GitHubs /stats/contributors, som svarar 202 medan den beräknas och
+  // åter-triggas av varje push. Vi POLLAR därför tills den är klar (max ~7 försök ≈ 50 s) så att
+  // siffrorna dyker upp av sig själva utan manuell omladdning.
   const [gh, setGh] = useState(null)
   const [loading, setLoading] = useState(true)
   useEffect(() => {
     let alive = true
-    fetch(`${API_BASE}/api/dev/github-stats`)
+    let tries = 0
+    let timer = null
+    const load = () => {
+      fetch(`${API_BASE}/api/dev/github-stats`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!alive) return
+          setGh(d)
+          if (d && d.computing && tries < 7) {   // GitHub räknar fortfarande -> försök igen strax
+            tries += 1
+            timer = setTimeout(load, 7000)
+          }
+        })
+        .catch(() => { /* mjuk degradering: behåll placeholder */ })
+        .finally(() => { if (alive) setLoading(false) })
+    }
+    load()
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [])
+
+  // Commit-historiken hämtas DIREKT (inte lazy): den ligger utrullad, driver per-utvecklar-listorna
+  // och är en robust reserv för commit-ANTALET medan stats-beräkningen (/stats/contributors) släpar.
+  const [commits, setCommits] = useState(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`${API_BASE}/api/dev/github-commits`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive) setGh(d) })
-      .catch(() => { /* mjuk degradering: behåll placeholder */ })
-      .finally(() => { if (alive) setLoading(false) })   // sluta visa "Hämtar…" även om anropet misslyckas
+      .then((d) => { if (alive) setCommits(d && Array.isArray(d.commits) ? d.commits : []) })
+      .catch(() => { if (alive) setCommits([]) })
     return () => { alive = false }
   }, [])
-  const devs = (gh && Array.isArray(gh.devs) && gh.devs.length) ? gh.devs : DEV_PLACEHOLDER
 
-  // Commit-historik: STÄNGD som standard. Hämtas lazy (först vid första utfällningen) så vi inte
-  // belastar GitHub-API:t i onödan när ingen tittar på historiken.
-  const [showHistory, setShowHistory] = useState(false)
-  const [commits, setCommits] = useState(null)
-  const [commitsLoading, setCommitsLoading] = useState(false)
-  const toggleHistory = () => {
-    const next = !showHistory
-    setShowHistory(next)
-    if (next && commits === null && !commitsLoading) {
-      setCommitsLoading(true)
-      fetch(`${API_BASE}/api/dev/github-commits`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => setCommits(d && Array.isArray(d.commits) ? d.commits : []))
-        .catch(() => setCommits([]))   // mjuk degradering: visa "ingen historik" i stället för att krascha
-        .finally(() => setCommitsLoading(false))
-    }
-  }
+  // Vilken utvecklares commits som är utfällda (en i taget). null = ingen.
+  const [openDev, setOpenDev] = useState(null)
+
+  // Gruppera commits per utvecklarnamn: används av "Visa commits" och som robust antal när stats släpar.
+  const commitsByDev = useMemo(() => {
+    const m = {}
+    for (const c of (commits || [])) (m[c.author] = m[c.author] || []).push(c)
+    return m
+  }, [commits])
+
+  const statsDevs = (gh && Array.isArray(gh.devs) && gh.devs.length) ? gh.devs : DEV_PLACEHOLDER
+  // Slå ihop källorna: commit-antalet tas som det STÖRSTA av stats och den hämtade listräkningen, så
+  // det laddar direkt även medan GitHub räknar stats. net_lines kommer bara från stats (enda aggregat).
+  const devs = statsDevs.map((d) => ({
+    ...d,
+    commits: Math.max(Number(d.commits) || 0, (commitsByDev[d.name] || []).length),
+  }))
+  const linesPending = !!(gh && gh.computing)   // rader kod beräknas fortfarande av GitHub
 
   return (
     <div style={{ height: '100%', overflow: 'auto', background: T.bg }}>
@@ -123,64 +171,62 @@ export default function Progress({ visibleTasks }) {
         </div>
 
         {/* Per utvecklare: GitHub-bidrag = commits + NETTORADER kod implementerat (aldrig "uppladdat":
-            vi skriver kod, inte laddar upp filer). Datan kommer cachad från /api/dev/github-stats. */}
+            vi skriver kod, inte laddar upp filer). Varje kort har en "Visa commits"-knapp som fäller ut
+            just den utvecklarens commits. Datan: /api/dev/github-stats (rader) + github-commits (lista). */}
         <h3 style={{ fontSize: 15, fontWeight: 800, color: T.ink, margin: '26px 0 12px' }}>👥 Per utvecklare</h3>
         <div style={{ display: 'grid', gap: 12 }}>
-          {devs.map((dev) => (
-            <div key={dev.name} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: '14px 16px', boxShadow: T.shadowSoft }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 30, height: 30, borderRadius: 999, background: T.rose, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13 }}>{(dev.name || '?')[0]}</span>
-                <span style={{ fontWeight: 800, color: T.ink, fontSize: 14 }}>{dev.name}</span>
-                <div style={{ flex: 1 }} />
-                {dev.last_active ? <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>senast aktiv {ago(dev.last_active * 1000)}</span> : null}
+          {devs.map((dev) => {
+            const devCommits = commitsByDev[dev.name] || []
+            const isOpen = openDev === dev.name
+            return (
+              <div key={dev.name} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: '14px 16px', boxShadow: T.shadowSoft }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 999, background: T.rose, color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13 }}>{(dev.name || '?')[0]}</span>
+                  <span style={{ fontWeight: 800, color: T.ink, fontSize: 14 }}>{dev.name}</span>
+                  <div style={{ flex: 1 }} />
+                  {dev.last_active ? <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>senast aktiv {ago(dev.last_active * 1000)}</span> : null}
+                </div>
+                <div style={{ marginTop: 9, fontSize: 13.5, color: T.ink, fontWeight: 800 }}>
+                  {fmtInt(dev.commits)} commits : <span style={{ color: T.roseDeep }}>{fmtInt(dev.net_lines)} rader kod implementerat</span>
+                  {linesPending ? <span style={{ marginLeft: 8, fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>(rader beräknas…)</span> : null}
+                </div>
+                {/* Per-utvecklar-knapp: fäller ut JUST den här utvecklarens commits (en i taget). */}
+                {devCommits.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => setOpenDev(isOpen ? null : dev.name)}
+                      aria-expanded={isOpen}
+                      style={{
+                        marginTop: 11, display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer',
+                        background: T.roseSoft, border: `1px solid ${T.rose}33`, borderRadius: 999, padding: '6px 13px',
+                        fontSize: 12.5, fontWeight: 800, color: T.roseDeep,
+                      }}
+                    >
+                      <span style={{ fontSize: 10 }}>{isOpen ? '▼' : '▶'}</span>
+                      {isOpen ? 'Dölj commits' : `Visa commits (${devCommits.length})`}
+                    </button>
+                    {isOpen && (
+                      <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
+                        {devCommits.map((c, i) => <CommitRow key={`${c.sha}-${i}`} c={c} showAuthor={false} />)}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-              <div style={{ marginTop: 9, fontSize: 13.5, color: T.ink, fontWeight: 800 }}>
-                {fmtInt(dev.commits)} commits : <span style={{ color: T.roseDeep }}>{fmtInt(dev.net_lines)} rader kod implementerat</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
         {loading && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Hämtar GitHub-statistik…</div>}
         {!loading && gh === null && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Kunde inte hämta GitHub-statistik just nu.</div>}
-        {!loading && gh && gh.computing && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>GitHub beräknar statistiken just nu, ladda om sidan om en liten stund.</div>}
 
-        {/* Commit-historik: stängd som standard, en knapp fäller ut den. Varje commit är nedkokad till
-            sin ämnesrad (förenklad i backenden). Datan hämtas lazy vid första klicket. */}
-        <button
-          onClick={toggleHistory}
-          aria-expanded={showHistory}
-          style={{
-            marginTop: 18, display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-            background: T.panel, border: `1px solid ${T.line}`, borderRadius: 999, padding: '9px 17px',
-            fontSize: 13, fontWeight: 800, color: T.ink, boxShadow: T.shadowSoft,
-          }}
-        >
-          <span style={{ color: T.rose, fontSize: 11 }}>{showHistory ? '▼' : '▶'}</span>
-          {showHistory ? 'Dölj commit historik' : 'Visa commit historik'}
-        </button>
-        {showHistory && (
-          <div style={{ marginTop: 12, display: 'grid', gap: 7 }}>
-            {commitsLoading && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Hämtar commit-historik…</div>}
-            {!commitsLoading && commits && commits.length === 0 && (
-              <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Ingen commit-historik tillgänglig just nu.</div>
-            )}
-            {!commitsLoading && commits && commits.map((c, i) => (
-              <div key={`${c.sha}-${i}`} style={{
-                display: 'flex', alignItems: 'baseline', gap: 12, background: T.panel,
-                border: `1px solid ${T.line}`, borderRadius: 12, padding: '10px 14px', boxShadow: T.shadowSoft,
-              }}>
-                <span style={{
-                  flex: '0 0 auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 11,
-                  color: T.roseDeep, background: T.roseSoft, border: `1px solid ${T.rose}33`, borderRadius: 6, padding: '2px 7px',
-                }}>{c.sha}</span>
-                <span style={{ flex: 1, fontSize: 13, color: T.ink, fontWeight: 600, overflowWrap: 'anywhere' }}>{c.summary}</span>
-                <span style={{ flex: '0 0 auto', fontSize: 11.5, color: T.inkSoft, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                  {c.author}{c.date ? ` · ${ago(new Date(c.date).getTime())}` : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Hela commit-historiken: ligger UTRULLAD (ingen toggle). Hämtas direkt vid sidladdning;
+            varje commit är nedkokad till sin ämnesrad i backenden. */}
+        <h3 style={{ fontSize: 15, fontWeight: 800, color: T.ink, margin: '26px 0 12px' }}>📜 Commit-historik</h3>
+        <div style={{ display: 'grid', gap: 7 }}>
+          {commits === null && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Hämtar commit-historik…</div>}
+          {commits && commits.length === 0 && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Ingen commit-historik tillgänglig just nu.</div>}
+          {commits && commits.map((c, i) => <CommitRow key={`${c.sha}-${i}`} c={c} showAuthor />)}
+        </div>
 
         <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 22, lineHeight: 1.5 }}>
           Hur det räknas: framstegen är rent <b>antal klara uppdrag delat med totalen</b> — en uppgift räknas
