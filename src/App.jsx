@@ -82,6 +82,9 @@ export default function App() {
   }, [tasks])
 
   const editing = editingId ? tasks.find((t) => t.id === editingId) || null : null
+  // Kategorifiltren är relevanta i de vyer som filtrerar kort (Nätet/Tidslinje/Framsteg), inte i
+  // Changelog/Data/Utvecklingschatt. De renderas i en egen rad UNDER navbaren (i vyns yta).
+  const showCats = view !== 'changelog' && view !== 'data' && view !== 'chat'
 
   function toggleCat(key) {
     setCats((c) => ({ ...c, [key]: !c[key] }))
@@ -115,9 +118,6 @@ export default function App() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg }}>
       <TopBar
         view={view} setView={setView}
-        cats={cats} toggleCat={toggleCat} catStats={catStats}
-        filterOpen={filterOpen} setFilterOpen={setFilterOpen}
-        hiddenSubSet={hiddenSubSet} toggleSub={toggleSub}
         people={people} conn={conn}
         onAdd={addTask}
         onName={() => setShowName(true)}
@@ -126,25 +126,36 @@ export default function App() {
         onLogin={() => setShowLogin(true)} onLogout={signOut}
       />
 
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {view === 'board' && (
-          <Whiteboard tasks={tasks} visibleTasks={visibleTasks} cats={cats} onOpenTask={setEditingId} paused={!!editingId} canEdit={canEdit} onRequireLogin={() => setShowLogin(true)} />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* Kategorifiltren bor i en egen rad i vyns yta (under navbaren), så att navbarens navigering
+            alltid får plats högst upp. Visas bara i vyer som faktiskt filtrerar kort. */}
+        {showCats && (
+          <CategoryBar
+            cats={cats} toggleCat={toggleCat} catStats={catStats}
+            filterOpen={filterOpen} setFilterOpen={setFilterOpen}
+            hiddenSubSet={hiddenSubSet} toggleSub={toggleSub}
+          />
         )}
-        {view === 'timeline' && (
-          <Timeline tasks={tasks} visibleTasks={visibleTasks} onOpenTask={setEditingId} />
-        )}
-        {view === 'progress' && (
-          <Progress tasks={tasks} visibleTasks={visibleTasks} cats={cats} />
-        )}
-        {view === 'changelog' && (
-          <Changelog tasks={tasks} />
-        )}
-        {view === 'data' && (
-          <Data />
-        )}
-        {view === 'chat' && (
-          <Chat onRequireLogin={() => setShowLogin(true)} />
-        )}
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          {view === 'board' && (
+            <Whiteboard tasks={tasks} visibleTasks={visibleTasks} cats={cats} onOpenTask={setEditingId} paused={!!editingId} canEdit={canEdit} onRequireLogin={() => setShowLogin(true)} />
+          )}
+          {view === 'timeline' && (
+            <Timeline tasks={tasks} visibleTasks={visibleTasks} onOpenTask={setEditingId} />
+          )}
+          {view === 'progress' && (
+            <Progress tasks={tasks} visibleTasks={visibleTasks} cats={cats} />
+          )}
+          {view === 'changelog' && (
+            <Changelog tasks={tasks} />
+          )}
+          {view === 'data' && (
+            <Data />
+          )}
+          {view === 'chat' && (
+            <Chat onRequireLogin={() => setShowLogin(true)} />
+          )}
+        </div>
       </div>
 
       {editing && (
@@ -185,8 +196,7 @@ function useIsCompact(maxWidth = 900) {
 
 function TopBar(props) {
   const {
-    view, setView, cats, toggleCat, catStats, filterOpen, setFilterOpen,
-    hiddenSubSet, toggleSub, people, conn, onAdd, onName, onSettings,
+    view, setView, people, conn, onAdd, onName, onSettings,
     canEdit, email, onLogin, onLogout,
   } = props
   const compact = useIsCompact(900)
@@ -194,7 +204,6 @@ function TopBar(props) {
   useEffect(() => { if (!compact) setMenuOpen(false) }, [compact])   // stäng drawern när vi växlar upp till bred layout
   // Undertiteln under "LedMig" speglar aktuell flik (döljs i kompakt läge för att spara plats).
   const brandSub = view === 'board' ? 'Utvecklings whiteboard · realtid' : (VIEWS.find((v) => v.key === view)?.label || '')
-  const showCats = view !== 'changelog' && view !== 'data' && view !== 'chat'   // kategorifiltren är irrelevanta i dessa vyer
 
   const brand = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, minWidth: 0 }}>
@@ -220,40 +229,6 @@ function TopBar(props) {
       ))}
     </div>
   )
-
-  const catChips = showCats ? (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-      {CATEGORIES.map((c) => {
-        const on = cats[c.key]
-        const st = (catStats && catStats[c.key]) || { done: 0, total: 0 }
-        return (
-          <button key={c.key} onClick={() => toggleCat(c.key)} title={`Visa/dölj ${c.label} (${st.done}/${st.total} klara)`} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
-            border: `1.5px solid ${on ? c.color : T.line}`,
-            background: on ? c.color + '22' : T.panel, color: on ? T.ink : T.inkSoft,
-            fontWeight: 700, fontSize: 12.5, opacity: on ? 1 : 0.6, whiteSpace: 'nowrap',
-          }}>
-            <span style={{
-              width: 13, height: 13, borderRadius: 4, display: 'grid', placeItems: 'center',
-              background: on ? c.color : 'transparent', border: `1.5px solid ${on ? c.color : T.todo}`,
-              color: '#fff', fontSize: 10, fontWeight: 900,
-            }}>{on ? '✓' : ''}</span>
-            <span>{c.glyph} {c.label}</span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: on ? c.color : T.inkSoft, opacity: 0.9 }}>{st.done}/{st.total}</span>
-          </button>
-        )
-      })}
-      <div style={{ position: 'relative' }}>
-        <button onClick={() => setFilterOpen((o) => !o)} title="Detaljfilter (underkategorier)" style={{
-          padding: '6px 10px', borderRadius: 999, border: `1.5px solid ${T.line}`,
-          background: hiddenSubSet.size ? T.roseSoft : T.panel, color: T.inkSoft, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap',
-        }}>⛃ Filter{hiddenSubSet.size ? ` (${hiddenSubSet.size})` : ''}</button>
-        {filterOpen && (
-          <SubFilterPopover cats={cats} hiddenSubSet={hiddenSubSet} toggleSub={toggleSub} onClose={() => setFilterOpen(false)} />
-        )}
-      </div>
-    </div>
-  ) : null
 
   const appenLink = (
     <a href="/app/" title="Öppna säkerhetsappen" style={{
@@ -285,7 +260,6 @@ function TopBar(props) {
           <MobileDrawer
             onClose={() => setMenuOpen(false)}
             view={view} setView={(k) => { setView(k); setMenuOpen(false) }}
-            showCats={showCats} cats={cats} toggleCat={toggleCat} catStats={catStats}
             conn={conn} people={people} onName={onName}
             canEdit={canEdit} email={email}
             onLogin={() => { setMenuOpen(false); onLogin() }} onLogout={onLogout}
@@ -306,7 +280,6 @@ function TopBar(props) {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 14px', minWidth: 0 }}>
         {brand}
         {tabs}
-        {catChips}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 10px' }}>
         <ConnChip conn={conn} />
@@ -330,7 +303,7 @@ function TopBar(props) {
    och datalager-anrop är oförändrade. */
 function MobileDrawer(props) {
   const {
-    onClose, view, setView, showCats, cats, toggleCat, catStats,
+    onClose, view, setView,
     conn, people, onName, canEdit, email, onLogin, onLogout, onSettings,
   } = props
   return (
@@ -357,24 +330,6 @@ function MobileDrawer(props) {
             ))}
           </div>
         </DrawerSection>
-
-        {showCats && (
-          <DrawerSection title="Filter">
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {CATEGORIES.map((c) => {
-                const on = cats[c.key]
-                const st = (catStats && catStats[c.key]) || { done: 0, total: 0 }
-                return (
-                  <button key={c.key} onClick={() => toggleCat(c.key)} style={{
-                    display: 'flex', alignItems: 'center', gap: 6, padding: '7px 11px', borderRadius: 999,
-                    border: `1.5px solid ${on ? c.color : T.line}`, background: on ? c.color + '22' : T.panel,
-                    color: on ? T.ink : T.inkSoft, fontWeight: 700, fontSize: 12.5, opacity: on ? 1 : 0.6,
-                  }}>{c.glyph} {c.label} <span style={{ fontWeight: 800 }}>{st.done}/{st.total}</span></button>
-                )
-              })}
-            </div>
-          </DrawerSection>
-        )}
 
         <DrawerSection title="Status"><ConnChip conn={conn} /></DrawerSection>
 
@@ -408,12 +363,54 @@ function DrawerSection({ title, children }) {
   )
 }
 
+/* Kategorifilter-rad: ligger i vyns YTA (en egen rad under navbaren), inte i navbaren, så att navbarens
+   navigering alltid ryms högst upp. Samma chip-knappar + detaljfilter som förut, bara flyttade hit.
+   Wrappar på smala skärmar; detaljfilter-popoveren ankras under Filter-knappen. */
+function CategoryBar({ cats, toggleCat, catStats, filterOpen, setFilterOpen, hiddenSubSet, toggleSub }) {
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6,
+      padding: '8px 14px', background: T.panel, borderBottom: `1px solid ${T.line}`, flexShrink: 0, zIndex: 10,
+    }}>
+      {CATEGORIES.map((c) => {
+        const on = cats[c.key]
+        const st = (catStats && catStats[c.key]) || { done: 0, total: 0 }
+        return (
+          <button key={c.key} onClick={() => toggleCat(c.key)} title={`Visa/dölj ${c.label} (${st.done}/${st.total} klara)`} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999,
+            border: `1.5px solid ${on ? c.color : T.line}`,
+            background: on ? c.color + '22' : T.panel, color: on ? T.ink : T.inkSoft,
+            fontWeight: 700, fontSize: 12.5, opacity: on ? 1 : 0.6, whiteSpace: 'nowrap',
+          }}>
+            <span style={{
+              width: 13, height: 13, borderRadius: 4, display: 'grid', placeItems: 'center',
+              background: on ? c.color : 'transparent', border: `1.5px solid ${on ? c.color : T.todo}`,
+              color: '#fff', fontSize: 10, fontWeight: 900,
+            }}>{on ? '✓' : ''}</span>
+            <span>{c.glyph} {c.label}</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: on ? c.color : T.inkSoft, opacity: 0.9 }}>{st.done}/{st.total}</span>
+          </button>
+        )
+      })}
+      <div style={{ position: 'relative' }}>
+        <button onClick={() => setFilterOpen((o) => !o)} title="Detaljfilter (underkategorier)" style={{
+          padding: '6px 10px', borderRadius: 999, border: `1.5px solid ${T.line}`,
+          background: hiddenSubSet.size ? T.roseSoft : T.panel, color: T.inkSoft, fontWeight: 700, fontSize: 12.5, whiteSpace: 'nowrap',
+        }}>⛃ Filter{hiddenSubSet.size ? ` (${hiddenSubSet.size})` : ''}</button>
+        {filterOpen && (
+          <SubFilterPopover cats={cats} hiddenSubSet={hiddenSubSet} toggleSub={toggleSub} onClose={() => setFilterOpen(false)} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 function SubFilterPopover({ cats, hiddenSubSet, toggleSub, onClose }) {
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
       <div style={{
-        position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 41, width: 300, maxHeight: 420,
+        position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 41, width: 'min(300px, calc(100vw - 28px))', maxHeight: 420,
         overflow: 'auto', background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14,
         boxShadow: T.shadow, padding: 12,
       }}>
