@@ -174,6 +174,9 @@ function TopBar(props) {
     hiddenSubSet, toggleSub, people, conn, onAdd, onName, onSettings,
     canEdit, email, onLogin, onLogout,
   } = props
+  // Undertiteln under "LedMig" speglar aktuell flik: Nätet behåller whiteboard-texten, övriga flikar
+  // visar sitt eget namn (Tidslinje, Framsteg, Changelog, Data, Utvecklingschatt).
+  const brandSub = view === 'board' ? 'Utvecklings whiteboard · realtid' : (VIEWS.find((v) => v.key === view)?.label || '')
   return (
     <header style={{
       display: 'flex', alignItems: 'center', gap: 16, padding: '10px 18px',
@@ -183,7 +186,7 @@ function TopBar(props) {
         <span style={{ fontSize: 22 }}>🛡️</span>
         <div style={{ lineHeight: 1.05 }}>
           <div style={{ fontWeight: 800, fontSize: 16, color: T.ink }}>LedMig</div>
-          <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}>Utvecklings whiteboard · realtid</div>
+          <div style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}>{brandSub}</div>
         </div>
       </div>
 
