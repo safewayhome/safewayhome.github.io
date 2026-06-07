@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { T, DIFFICULTIES, DIFF } from '../theme'
 import { computeProgress, progressByCategory, progressByDifficulty, ago, diffKey } from '../util'
-import { SYSTEM_DESC } from '../changelogData'
 import { API_BASE } from '../chat'
 
 // Klassificera en commits svårighetsgrad. Förstahandskälla: ärv från det tavlekort vars titel bäst
@@ -225,54 +224,6 @@ export default function Progress({ tasks, visibleTasks }) {
           <Bar big seg={overall} color={T.rose} />
         </div>
 
-        {/* fyra svårighets-progressbars (en per färg) */}
-        <h3 style={{ fontSize: 15, fontWeight: 800, color: T.ink, margin: '0 0 12px' }}>Per svårighetsgrad</h3>
-        <div style={{ display: 'grid', gap: 12, marginBottom: 26 }}>
-          {byDiff.map((row) => (
-            <div key={row.diff.key} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: '13px 16px', boxShadow: T.shadowSoft }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ width: 13, height: 13, borderRadius: 4, background: row.diff.color }} />
-                <span style={{ fontWeight: 800, color: row.diff.text, fontSize: 14 }}>{row.diff.label}</span>
-                <div style={{ flex: 1 }} />
-                <span style={{ fontSize: 13, fontWeight: 800, color: T.ink }}>{row.n ? `${row.pct}%` : '—'}</span>
-              </div>
-              <Bar seg={row} color={row.diff.color} />
-              <div style={{ marginTop: 8, fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>
-                {row.n === 0 ? 'Inga uppdrag i den här graden' : `${row.done} av ${row.n} klara · ${row.counts.doing} pågår · ${row.counts.todo} kvar`}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Vad är LedMig? — den mänskliga beskrivningen i stället för en torr sifferrad */}
-        <div style={{ background: T.roseSoft, borderRadius: 16, padding: '20px 22px', marginBottom: 26 }}>
-          <div style={{ fontSize: 16.5, fontWeight: 900, color: T.ink, lineHeight: 1.4, marginBottom: 12 }}>
-            {SYSTEM_DESC.tagline}
-          </div>
-          {SYSTEM_DESC.paragraphs.map((p, i) => (
-            <p key={i} style={{ fontSize: 13.5, lineHeight: 1.65, color: T.ink, margin: i ? '11px 0 0' : 0 }}>{p}</p>
-          ))}
-        </div>
-
-        {/* per område (team) */}
-        <h3 style={{ fontSize: 15, fontWeight: 800, color: T.ink, margin: '0 0 12px' }}>Per område</h3>
-        <div style={{ display: 'grid', gap: 12 }}>
-          {byCat.map((row) => (
-            <div key={row.cat.key} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: '14px 16px', boxShadow: T.shadowSoft }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 16 }}>{row.cat.glyph}</span>
-                <span style={{ fontWeight: 800, color: row.cat.color, fontSize: 14 }}>{row.cat.label}</span>
-                <div style={{ flex: 1 }} />
-                <span style={{ fontSize: 13, fontWeight: 800, color: T.ink }}>{row.pct}%</span>
-              </div>
-              <Bar seg={row} color={row.cat.color} />
-              <div style={{ marginTop: 9, fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>
-                {row.done} av {row.n} uppdrag klara · {row.counts.doing} pågår · {row.counts.todo} kvar
-              </div>
-            </div>
-          ))}
-        </div>
-
         {/* Per utvecklare: GitHub-bidrag = commits + NETTORADER kod implementerat (aldrig "uppladdat":
             vi skriver kod, inte laddar upp filer). Varje kort har en "Visa commits"-knapp som fäller ut
             just den utvecklarens commits. Datan: /api/dev/github-stats (rader) + github-commits (lista). */}
@@ -342,6 +293,44 @@ export default function Progress({ tasks, visibleTasks }) {
         </div>
         {loading && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Hämtar GitHub-statistik…</div>}
         {!loading && gh === null && <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 8, fontWeight: 700 }}>Kunde inte hämta GitHub-statistik just nu.</div>}
+
+        {/* fyra svårighets-progressbars (en per färg) */}
+        <h3 style={{ fontSize: 15, fontWeight: 800, color: T.ink, margin: '26px 0 12px' }}>Per svårighetsgrad</h3>
+        <div style={{ display: 'grid', gap: 12, marginBottom: 26 }}>
+          {byDiff.map((row) => (
+            <div key={row.diff.key} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: '13px 16px', boxShadow: T.shadowSoft }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ width: 13, height: 13, borderRadius: 4, background: row.diff.color }} />
+                <span style={{ fontWeight: 800, color: row.diff.text, fontSize: 14 }}>{row.diff.label}</span>
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 13, fontWeight: 800, color: T.ink }}>{row.n ? `${row.pct}%` : '—'}</span>
+              </div>
+              <Bar seg={row} color={row.diff.color} />
+              <div style={{ marginTop: 8, fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>
+                {row.n === 0 ? 'Inga uppdrag i den här graden' : `${row.done} av ${row.n} klara · ${row.counts.doing} pågår · ${row.counts.todo} kvar`}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* per område (team) */}
+        <h3 style={{ fontSize: 15, fontWeight: 800, color: T.ink, margin: '0 0 12px' }}>Per område</h3>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {byCat.map((row) => (
+            <div key={row.cat.key} style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: '14px 16px', boxShadow: T.shadowSoft }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 16 }}>{row.cat.glyph}</span>
+                <span style={{ fontWeight: 800, color: row.cat.color, fontSize: 14 }}>{row.cat.label}</span>
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 13, fontWeight: 800, color: T.ink }}>{row.pct}%</span>
+              </div>
+              <Bar seg={row} color={row.cat.color} />
+              <div style={{ marginTop: 9, fontSize: 12, color: T.inkSoft, fontWeight: 700 }}>
+                {row.done} av {row.n} uppdrag klara · {row.counts.doing} pågår · {row.counts.todo} kvar
+              </div>
+            </div>
+          ))}
+        </div>
 
         {/* Hela commit-historiken: ligger UTRULLAD (ingen toggle). Hämtas direkt vid sidladdning;
             varje commit är nedkokad till sin ämnesrad i backenden. */}
