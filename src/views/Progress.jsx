@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { T } from '../theme'
-import { computeProgress, progressByCategory, progressByDifficulty, ago } from '../util'
+import { T, DIFFICULTIES } from '../theme'
+import { computeProgress, progressByCategory, progressByDifficulty, ago, diffKey } from '../util'
 import { SYSTEM_DESC } from '../changelogData'
 import { API_BASE } from '../chat'
 
@@ -33,7 +33,29 @@ function CommitRow({ c, showAuthor }) {
   )
 }
 
-export default function Progress({ visibleTasks }) {
+// Commit-lista som en TIDSLINJE: en pulserande "gång" (animerad räls, .lm-commit-rail) löper mellan
+// commit-noderna (.lm-commit-node pulserar) så historiken känns levande. Återanvänder CommitRow för korten.
+function CommitTimeline({ items, showAuthor }) {
+  return (
+    <div style={{ position: 'relative', display: 'grid', gap: 8 }}>
+      {/* den pulserande gången: en kontinuerlig flödande linje från första till sista noden */}
+      {items.length > 1 && (
+        <div className="lm-commit-rail" style={{ position: 'absolute', left: 8, top: 18, bottom: 18, width: 2, borderRadius: 2 }} />
+      )}
+      {items.map((c, i) => (
+        <div key={`${c.sha}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 11, position: 'relative' }}>
+          <span className="lm-commit-node" style={{
+            flex: '0 0 auto', marginTop: 13, marginLeft: 3, width: 11, height: 11, borderRadius: 999,
+            background: T.rose, border: '2px solid #fff', zIndex: 1,
+          }} />
+          <div style={{ flex: 1, minWidth: 0 }}><CommitRow c={c} showAuthor={showAuthor} /></div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export default function Progress({ tasks, visibleTasks }) {
   const overall = useMemo(() => computeProgress(visibleTasks), [visibleTasks])
   const byDiff = useMemo(() => progressByDifficulty(visibleTasks), [visibleTasks])
   // bara områden som faktiskt har synliga uppgifter (respekterar toppfiltren)
@@ -99,6 +121,24 @@ export default function Progress({ visibleTasks }) {
     commits: Math.max(Number(d.commits) || 0, (commitsByDev[d.name] || []).length),
   }))
   const linesPending = !!(gh && gh.computing)   // rader kod beräknas fortfarande av GitHub
+
+  // Avklarade uppgifter per utvecklare, grupperade på svårighetsgrad (tavlans kort). En "done"-uppgift
+  // tillskrivs den som senast rörde den (updatedBy), matchat mot utvecklarnamnet (skiftlägesokänsligt).
+  // Detta ger korten "hur många Enkla/Medel/Svåra/Extremt svåra man klarat", färgat enligt kategoriseringen.
+  const doneByDiff = useMemo(() => {
+    const names = DEV_PLACEHOLDER.map((d) => d.name)
+    const m = {}
+    for (const t of (tasks || [])) {
+      if (t.status !== 'done') continue
+      const who = String(t.updatedBy || (t.createdBy && t.createdBy.name) || '').toLowerCase()
+      const name = names.find((n) => who.includes(n.toLowerCase()))
+      if (!name) continue
+      const bucket = (m[name] = m[name] || {})
+      const k = diffKey(t)
+      bucket[k] = (bucket[k] || 0) + 1
+    }
+    return m
+  }, [tasks])
 
   return (
     <div style={{ height: '100%', overflow: 'auto', background: T.bg }}>
@@ -190,6 +230,27 @@ export default function Progress({ visibleTasks }) {
                   {fmtInt(dev.commits)} commits : <span style={{ color: T.roseDeep }}>{fmtInt(dev.net_lines)} rader kod implementerat</span>
                   {linesPending ? <span style={{ marginLeft: 8, fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>(rader beräknas…)</span> : null}
                 </div>
+                {/* Avklarade uppgifter per svårighetsgrad (tavlans kategorisering), färgkodat: hur många
+                    Enkla/Medel/Svåra/Extremt svåra den här utvecklaren har klarat. */}
+                {(() => {
+                  const bd = doneByDiff[dev.name] || {}
+                  const total = DIFFICULTIES.reduce((s, d) => s + (bd[d.key] || 0), 0)
+                  return (
+                    <div style={{ marginTop: 9, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>Avklarat:</span>
+                      {total === 0
+                        ? <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 700 }}>inga uppgifter ännu</span>
+                        : DIFFICULTIES.filter((d) => bd[d.key]).map((d) => (
+                            <span key={d.key} title={d.label} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 800,
+                              background: d.soft, color: d.text, border: `1px solid ${d.color}55`, borderRadius: 999, padding: '3px 9px',
+                            }}>
+                              <span>{d.glyph}</span>{bd[d.key]} {d.label}
+                            </span>
+                          ))}
+                    </div>
+                  )
+                })()}
                 {/* Per-utvecklar-knapp: fäller ut JUST den här utvecklarens commits (en i taget). */}
                 {devCommits.length > 0 && (
                   <>
@@ -206,8 +267,8 @@ export default function Progress({ visibleTasks }) {
                       {isOpen ? 'Dölj commits' : `Visa commits (${devCommits.length})`}
                     </button>
                     {isOpen && (
-                      <div style={{ marginTop: 10, display: 'grid', gap: 7 }}>
-                        {devCommits.map((c, i) => <CommitRow key={`${c.sha}-${i}`} c={c} showAuthor={false} />)}
+                      <div style={{ marginTop: 10 }}>
+                        <CommitTimeline items={devCommits} showAuthor={false} />
                       </div>
                     )}
                   </>
@@ -225,7 +286,7 @@ export default function Progress({ visibleTasks }) {
         <div style={{ display: 'grid', gap: 7 }}>
           {commits === null && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Hämtar commit-historik…</div>}
           {commits && commits.length === 0 && <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 700 }}>Ingen commit-historik tillgänglig just nu.</div>}
-          {commits && commits.map((c, i) => <CommitRow key={`${c.sha}-${i}`} c={c} showAuthor />)}
+          {commits && commits.length > 0 && <CommitTimeline items={commits} showAuthor />}
         </div>
 
         <p style={{ fontSize: 11.5, color: T.inkSoft, marginTop: 22, lineHeight: 1.5 }}>

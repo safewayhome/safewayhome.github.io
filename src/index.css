@@ -47,6 +47,21 @@ input, select, textarea { font-family: inherit; }
 @keyframes lm-sheen { 0% { transform: translateX(-160%); } 60%,100% { transform: translateX(360%); } }
 @keyframes lm-ring { to { transform: rotate(360deg); } }
 
+/* Framsteg: pulserande "gång" (tidslinje) mellan commits. Rälsen är en nedåt-flödande gradient
+   (marscherande streck = gången), och varje commit-nod pulserar. prefers-reduced-motion nedan
+   stänger av animeringarna automatiskt. */
+@keyframes lm-rail-flow { 0% { background-position: 0 0; } 100% { background-position: 0 14px; } }
+.lm-commit-rail {
+  background-image: linear-gradient(180deg, #fb7185cc 0 55%, transparent 55% 100%);
+  background-size: 100% 14px;
+  animation: lm-rail-flow 1s linear infinite;
+}
+@keyframes lm-node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 #fb718599; transform: scale(1); }
+  50% { box-shadow: 0 0 0 6px #fb718500; transform: scale(1.18); }
+}
+.lm-commit-node { animation: lm-node-pulse 2s ease-in-out infinite; }
+
 /* Markdown i chatt-bubblor: trimma yttersta marginalerna så texten sitter snyggt i kortet. */
 .lm-md > :first-child { margin-top: 0 !important; }
 .lm-md > :last-child { margin-bottom: 0 !important; }
