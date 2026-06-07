@@ -131,15 +131,16 @@ export async function fetchUsers() {
 }
 
 // Läser SSE-strömmen från pipelinen och driver liveStore (steg/framsteg/tänkande/svar) live.
-async function streamPipeline(message, image_url) {
-  liveStore.set({ active: true, mode: '', steps: [], step: 0, progress: 2, label: 'Startar…', model: '', thinking: '', answer: '', error: '' })
+async function streamPipeline(message, image_url, mode) {
+  // Sätt mode direkt så forsknings-UI:t kan välja rätt vy (snabb vs tänkande) innan plan-eventet hinner fram.
+  liveStore.set({ active: true, mode, steps: [], step: 0, progress: 2, label: mode === 'fast' ? 'Genererar snabbt svar...' : 'Startar…', model: '', thinking: '', answer: '', error: '' })
   let resp
   try {
     const { data: { session } } = await supabase.auth.getSession()
     resp = await fetch(`${API_BASE}/api/chat/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-      body: JSON.stringify({ message, image_url }),
+      body: JSON.stringify({ message, image_url, mode }),
     })
     if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`)
   } catch (e) {
@@ -178,8 +179,11 @@ async function streamPipeline(message, image_url) {
 function handleEvent(obj) {
   const s = liveStore.get()
   if (obj.type === 'plan') {
-    // Backend talar om läge (code/text) + vilka steg-etiketter som gäller -> styr forsknings-UI:t.
-    liveStore.update({ mode: obj.mode || '', steps: Array.isArray(obj.steps) ? obj.steps : [] })
+    // Backend talar om läge (fast/thinking) + vilka steg-etiketter som gäller -> styr forsknings-UI:t.
+    liveStore.update({ mode: obj.mode || s.mode || '', steps: Array.isArray(obj.steps) ? obj.steps : [] })
+  } else if (obj.type === 'model') {
+    // Vilken modell som FAKTISKT svarade (efter ev. fallback) -> uppdatera modell-badgen.
+    liveStore.update({ model: obj.model || s.model })
   } else if (obj.type === 'status') {
     liveStore.update({ step: obj.step, progress: Math.max(s.progress, obj.progress || 0), label: obj.label || s.label, model: obj.model || s.model })
   } else if (obj.type === 'thinking') {
@@ -212,7 +216,8 @@ function handleEvent(obj) {
 }
 
 // Skicka ett meddelande: ladda ev. bild -> spara människans rad (optimistiskt + persistent) -> kör kedjan.
-export async function sendMessage(text, imageFile) {
+// mode = 'fast' (snabbt svar) eller 'thinking' (full 3-stegs-kedja).
+export async function sendMessage(text, imageFile, mode = 'fast') {
   text = (text || '').trim()
   if (!text && !imageFile) return { error: null }
   const me = authStore.get().user
@@ -234,6 +239,6 @@ export async function sendMessage(text, imageFile) {
     return { error: { message: e.message } }
   }
 
-  streamPipeline(text, image_url)   // kör vidare i bakgrunden (await:as ej: UI:t följer liveStore)
+  streamPipeline(text, image_url, mode)   // kör vidare i bakgrunden (await:as ej: UI:t följer liveStore)
   return { error: null }
 }

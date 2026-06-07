@@ -146,6 +146,7 @@ function ChatRoom({ myEmail }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [focused, setFocused] = useState(false)
+  const [chatMode, setChatMode] = useState('fast')   // 'fast' (standard, snabbt svar) eller 'thinking' (full kedja)
   const fileRef = useRef(null)
   const bottomRef = useRef(null)
   const taRef = useRef(null)
@@ -183,7 +184,7 @@ function ChatRoom({ myEmail }) {
     // om samma liveStore (steg/tänkande/svar nollställs mitt i).
     if (busy || live.active || (!text.trim() && !imageFile)) return
     setBusy(true); setErr('')
-    const { error } = await sendMessage(text, imageFile)
+    const { error } = await sendMessage(text, imageFile, chatMode)
     setBusy(false)
     if (error) { setErr(error.message || 'Kunde inte skicka.'); return }
     setText(''); setImageFile(null)
@@ -271,6 +272,7 @@ function ChatRoom({ myEmail }) {
               }}>ta bort</button>
             </div>
           )}
+          <ModeToggle mode={chatMode} setMode={setChatMode} disabled={live.active} />
           <div style={{
             display: 'flex', alignItems: 'flex-end', gap: 10, padding: 7, borderRadius: 20,
             background: 'rgba(255,255,255,0.8)', border: `1.5px solid ${focused ? T.rose + '88' : T.line}`,
@@ -487,6 +489,36 @@ function ModelChip({ model }) {
   )
 }
 
+/* ───────────────────────────── Läges-väljare (Snabb / Tänkande) ───────────────────────────── */
+// Diskret segment-kontroll ovanför inmatningen. Standard = "Snabb". Inaktiv medan ett svar streamar.
+function ModeToggle({ mode, setMode, disabled }) {
+  const opts = [
+    { key: 'fast', label: 'Snabb', glyph: '⚡', tip: 'Snabbt svar: ett anrop, ingen tänkande-process.' },
+    { key: 'thinking', label: 'Tänkande', glyph: '🧠', tip: 'Full kedja: analys, generering och granskning med live tänkande-process.' },
+  ]
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 9 }}>
+      <div style={{
+        display: 'inline-flex', gap: 3, padding: 3, borderRadius: 12,
+        background: 'rgba(255,255,255,0.8)', border: `1px solid ${T.line}`, boxShadow: LIFT_SOFT, opacity: disabled ? 0.55 : 1,
+      }}>
+        {opts.map((o) => {
+          const on = mode === o.key
+          return (
+            <button key={o.key} disabled={disabled} onClick={() => setMode(o.key)} title={o.tip} style={{
+              border: 'none', borderRadius: 9, padding: '6px 13px', fontSize: 12.5, fontWeight: 800,
+              cursor: disabled ? 'default' : 'pointer',
+              background: on ? `linear-gradient(180deg, ${T.rose}, ${T.roseDeep})` : 'transparent',
+              color: on ? '#fff' : T.inkSoft,
+              boxShadow: on ? '0 4px 12px -6px rgba(225,29,72,0.6)' : 'none', transition: 'background .2s, color .2s',
+            }}>{o.glyph} {o.label}</button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /* ───────────────────────────── Tokenmätare (AI-budget) ───────────────────────────── */
 function fmtTokens(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M'
@@ -551,6 +583,7 @@ function ResearchPanel({ live }) {
     : STEPS
   const stepCount = pills.length
   const band = 100 / stepCount
+  const fast = live.mode === 'fast'   // snabbt läge: enkel laddningstext, inga steg-piller eller tänkande-ruta
 
   return (
     <div style={{
@@ -579,16 +612,19 @@ function ResearchPanel({ live }) {
         <BrandMark size={34} active />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: '0 0 auto', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontWeight: 800, fontSize: 14, color: T.ink, letterSpacing: -0.2, whiteSpace: 'nowrap' }}>AI:n arbetar</span>
+            <span style={{ fontWeight: 800, fontSize: 14, color: T.ink, letterSpacing: -0.2, whiteSpace: 'nowrap' }}>{fast ? 'Genererar snabbt svar...' : 'AI:n arbetar'}</span>
             <Dots />
           </div>
-          <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600, whiteSpace: 'nowrap' }}>{live.label || pills[step - 1]?.label} · steg {Math.min(step, stepCount)} / {stepCount}</span>
+          <span style={{ fontSize: 11.5, color: T.inkSoft, fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {fast ? (live.label || 'Snabbt läge') : `${live.label || pills[step - 1]?.label} · steg ${Math.min(step, stepCount)} / ${stepCount}`}
+          </span>
         </div>
         <div style={{ flex: 1 }} />
         {live.model && <ModelChip model={live.model} />}
       </div>
 
-      {/* steg-piller som fylls i takt med kedjan (var och en med egen fyll-remsa) */}
+      {/* steg-piller som fylls i takt med kedjan (var och en med egen fyll-remsa). Döljs i snabbt läge. */}
+      {!fast && (
       <div style={{ position: 'relative', display: 'flex', gap: 9, padding: '0 18px 12px' }}>
         {pills.map((s) => {
           const done = step > s.n
@@ -621,6 +657,7 @@ function ResearchPanel({ live }) {
           )
         })}
       </div>
+      )}
 
       {/* fin framstegsindikator */}
       <div style={{ position: 'relative', padding: '0 18px 12px' }}>
@@ -637,8 +674,8 @@ function ResearchPanel({ live }) {
         </div>
       </div>
 
-      {/* rullande tänkande-process (chain of thought) */}
-      {live.thinking && (
+      {/* rullande tänkande-process (chain of thought). Döljs helt i snabbt läge. */}
+      {!fast && live.thinking && (
         <div style={{ position: 'relative', padding: '4px 18px 12px' }}>
           <div style={{ fontSize: 10.5, fontWeight: 800, color: T.inkSoft, marginBottom: 5, letterSpacing: 0.5, textTransform: 'uppercase' }}>Tänkande-process</div>
           <div ref={thinkRef} style={{
