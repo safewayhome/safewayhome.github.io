@@ -6,23 +6,25 @@ import { submitInterview, validateInterview } from './interviews'
    otrygghet i vardagen. Tonen är varm, ombonad och trygg, aldrig tung eller skrämmande.
 
    Designspråk (medvetet HANDGJORT, inte SaaS/AI-mall):
-     - Inga stela rektangulära kort. Texten flyter fritt mot den djupa natten.
+     - Inga stela rektangulära kort. Texten flyter fritt mot en ljus, varm gräddvit yta.
      - En mycket tunn, mjukt kurvad och glödande "Led" (rutt-linje i roseguld och rosa) slingrar sig
        nerför sidan bakom texten, med några små, subtila fotsteg som vandrar längs den (knyter ihop
        sidan med appens själ: vägen hem).
-     - Stora, mycket diffusa ljus-auras (radial-gradients med stort blur) som dämpade gatlyktor: en
-       bärnstens/guldig glöd bakom BRÅ-statistiken (en trygg, belyst zon på gatan) och en blush-rosa
-       glöd bakom formuläret.
+     - Stora, mycket diffusa ljus-auras (radial-gradients med stort blur) som mjuka, varma ljuspölar: en
+       bärnstens/guldig glöd bakom BRÅ-statistiken (en trygg, belyst zon) och en blush-rosa glöd bakom
+       formuläret.
      - Mjuk, varm typografi (text-transparenta rubriker), inga tech-ikoner, sömlösa formulärfält med en
        hårfin roseguld-ram.
 
    Allt textinnehåll, den källkritiska BRÅ-hänvisningen och transparensen om att appen är HELT
    kostnadsfri är oförändrade. FORMAT: aldrig AI-tankestreck som separator, alltid kolon (:). */
 
-// Varm nattpalett (sidan är fristående från tavlans ljusa tema).
+// Varm, ljus gryningspalett (mjuk gräddvit bakgrund med varma accenter): ljusare och tydligare än den
+// tidigare natt-versionen, men samma organiska själ. Accentfärgerna är fördjupade så att de håller
+// god läsbarhet (WCAG-kontrast) mot den ljusa bakgrunden.
 const D = {
-  ink: '#efe9f1', inkSoft: '#c6c1d8', inkFaint: '#a8a4c0',
-  gold: '#ecc98f', amber: '#f2c879', roseGold: '#e6b59a', pink: '#f4a9be',
+  ink: '#3b2f3a', inkSoft: '#6e6370', inkFaint: '#756a73',
+  gold: '#8f5820', amber: '#9a6820', roseGold: '#95502f', pink: '#9a3950',
 }
 const APP_URL = '/app/'   // bryggan till den kostnadsfria appen (samma domän)
 const COL = 880           // innehållets max-bredd: Leden (SVG) använder SAMMA centrerade spalt som <main>
@@ -73,7 +75,7 @@ export default function Ideel() {
         <Stats />
         <StoryConcept onShare={scrollToForm} />
         <section ref={formRef} style={{ position: 'relative', padding: 'clamp(40px, 9vh, 92px) 0', scrollMarginTop: 24 }}>
-          <Glow color="rgba(244,169,190,0.20)" style={{ top: '6%', left: '50%', transform: 'translateX(-50%)', width: 'min(640px, 96%)', height: 560 }} />
+          <Glow color="rgba(233,150,178,0.26)" style={{ top: '6%', left: '50%', transform: 'translateX(-50%)', width: 'min(640px, 96%)', height: 560 }} />
           <InterviewForm />
         </section>
         <Footer />
@@ -82,19 +84,19 @@ export default function Ideel() {
   )
 }
 
-/* Stora, mycket diffusa ambient-auras: nattglöd som ramar in sidan utan att konkurrera med texten.
-   Fixed + pointerEvents:none + overflow-klippt behållare så de aldrig stör scroll eller klick. */
+/* Stora, mycket diffusa ambient-auras: en mjuk, varm glöd som ramar in sidan utan att konkurrera med
+   texten. Fixed + pointerEvents:none + overflow-klippt behållare så de aldrig stör scroll eller klick. */
 function AmbientAuras() {
   return (
     <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }}>
-      <div style={auraBase({ top: '-14%', left: '-6%', width: 560, height: 560, background: 'radial-gradient(circle, rgba(242,200,121,0.14), transparent 70%)' })} />
-      <div style={auraBase({ bottom: '-18%', right: '-10%', width: 620, height: 620, background: 'radial-gradient(circle, rgba(244,169,190,0.12), transparent 70%)', animationDelay: '2.5s' })} />
+      <div style={auraBase({ top: '-14%', left: '-6%', width: 560, height: 560, background: 'radial-gradient(circle, rgba(233,170,90,0.22), transparent 70%)' })} />
+      <div style={auraBase({ bottom: '-18%', right: '-10%', width: 620, height: 620, background: 'radial-gradient(circle, rgba(233,150,178,0.20), transparent 70%)', animationDelay: '2.5s' })} />
     </div>
   )
 }
 const auraBase = (s) => ({ position: 'absolute', borderRadius: '50%', filter: 'blur(80px)', pointerEvents: 'none', animation: 'ideel-aura 11s ease-in-out infinite', ...s })
 
-// En sektionsbunden, mycket diffus glöd (en dämpad gatlykta) som ligger BAKOM ett textavsnitt.
+// En sektionsbunden, mycket diffus glöd (en mjuk, varm ljuspöl) som ligger BAKOM ett textavsnitt.
 function Glow({ color, style }) {
   return (
     <div aria-hidden="true" style={{
@@ -140,9 +142,9 @@ function WindingPath({ w, h }) {
       style={{ position: 'absolute', top: 0, left: 0, right: 0, margin: '0 auto', maxWidth: COL, width: '100%', height: h, zIndex: 0, pointerEvents: 'none' }}>
       <defs>
         <linearGradient id="ideel-led" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#e9c79a" />
-          <stop offset="50%" stopColor="#e6b59a" />
-          <stop offset="100%" stopColor="#f3a9c2" />
+          <stop offset="0%" stopColor="#c2873f" />
+          <stop offset="50%" stopColor="#bd7257" />
+          <stop offset="100%" stopColor="#cf5e82" />
         </linearGradient>
         <filter id="ideel-led-blur" x="-40%" y="-40%" width="180%" height="180%">
           <feGaussianBlur stdDeviation="3.4" />
@@ -150,12 +152,12 @@ function WindingPath({ w, h }) {
       </defs>
       {/* mjukt glödlager (suddigt, brett) + hårfin kärna */}
       <path className="ideel-led-glow" d={d} fill="none" stroke="url(#ideel-led)" strokeWidth="5" strokeLinecap="round" filter="url(#ideel-led-blur)" />
-      <path d={d} fill="none" stroke="url(#ideel-led)" strokeWidth="1.4" strokeLinecap="round" opacity="0.8" />
+      <path d={d} fill="none" stroke="url(#ideel-led)" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
       {feet.map((f) => (
         <g key={f.i} className="ideel-step" style={{ animationDelay: (f.i * 0.3) + 's' }}
           transform={`translate(${f.px.toFixed(1)} ${f.py.toFixed(1)}) rotate(${f.deg.toFixed(1)})`}>
-          <ellipse cx="0" cy="0" rx="2.2" ry="4.3" fill="#ecb79e" />
-          <circle cx="0" cy="-4.7" r="1.2" fill="#ecb79e" />
+          <ellipse cx="0" cy="0" rx="2.2" ry="4.3" fill="#bd7450" />
+          <circle cx="0" cy="-4.7" r="1.2" fill="#bd7450" />
         </g>
       ))}
     </svg>
@@ -165,8 +167,7 @@ function WindingPath({ w, h }) {
 function Hero({ onShare }) {
   return (
     <header style={{ position: 'relative', zIndex: 1, textAlign: 'center', paddingTop: 'clamp(74px, 14vh, 144px)', paddingBottom: 'clamp(28px, 6vh, 60px)' }}>
-      <div style={{ fontSize: 26, marginBottom: 14, opacity: 0.9 }}>🤍</div>
-      <Eyebrow center>Ideell förening</Eyebrow>
+      <div style={{ fontSize: 26, marginBottom: 18, opacity: 0.9 }}>💗</div>
       <h1 style={{ ...softHeading, fontSize: 'clamp(32px, 6.4vw, 58px)', margin: '0 0 20px' }}>
         Vi ger röst åt de tysta
       </h1>
@@ -190,7 +191,7 @@ function Stats() {
   return (
     <section style={{ position: 'relative', padding: 'clamp(38px, 8vh, 84px) 0' }} aria-labelledby="stats-rubrik">
       {/* trygg, belyst zon: en mjuk bärnstens/guldig glöd bakom statistiken */}
-      <Glow color="rgba(242,200,121,0.20)" style={{ top: '14%', left: '50%', transform: 'translateX(-50%)', width: 'min(720px, 98%)', height: 520 }} />
+      <Glow color="rgba(233,170,90,0.28)" style={{ top: '14%', left: '50%', transform: 'translateX(-50%)', width: 'min(720px, 98%)', height: 520 }} />
       <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 'clamp(28px, 5vh, 52px)' }}>
         <Eyebrow center>Faktabaserat: så ser vardagen ut</Eyebrow>
         <h2 id="stats-rubrik" style={softHeading}>Otryggheten är verklig, och ofta osynlig</h2>
@@ -282,7 +283,7 @@ function InterviewForm() {
   if (state === 'done') {
     return (
       <div className="ideel-rise" style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 520, margin: '0 auto', padding: '30px 0' }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🤍</div>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>💗</div>
         <h2 style={{ ...softHeading, marginBottom: 10 }}>Tack för att du delar</h2>
         <p style={{ ...lead, margin: '0 auto' }}>
           Vi har tagit emot din anmälan och hör av oss om du lämnat en e-post. Din röst gör skillnad.
@@ -336,7 +337,7 @@ function InterviewForm() {
           </span>
         </label>
 
-        {err && <div role="alert" style={{ fontSize: 13, color: '#ffb4c4', marginTop: 6 }}>{err}</div>}
+        {err && <div role="alert" style={{ fontSize: 13, color: '#c2354f', marginTop: 6 }}>{err}</div>}
 
         <button type="submit" disabled={state === 'sending'} style={{ ...btnSoft, width: '100%', marginTop: 16, opacity: state === 'sending' ? 0.6 : 1, cursor: state === 'sending' ? 'wait' : 'pointer' }}>
           {state === 'sending' ? 'Skickar…' : 'Skicka in'}
@@ -392,24 +393,25 @@ const Field = ({ label, children }) => (
 // Mjuk, varm rubrik: text-transparent gradient (guld -> roseguld -> rosa) med en hårfin glöd.
 const softHeading = {
   fontSize: 'clamp(23px, 4.2vw, 34px)', fontWeight: 800, lineHeight: 1.16, margin: 0, letterSpacing: 0.2,
-  background: 'linear-gradient(104deg, #f3d8a8, #e7b89f 48%, #f4acc5)',
+  // Mörkare, varma toningar (guld -> roseguld -> ros) så rubriken är mjuk MEN tydligt läsbar mot ljust (WCAG AA).
+  background: 'linear-gradient(104deg, #8f5820, #984f3a 48%, #9a3556)',
   WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
-  filter: 'drop-shadow(0 0 22px rgba(240,200,150,0.26))',
+  filter: 'drop-shadow(0 2px 8px rgba(176,106,72,0.14))',
 }
 const lead = { fontSize: 'clamp(15px, 2.2vw, 17px)', color: D.inkSoft, lineHeight: 1.65, maxWidth: 640 }
-// Sömlösa fält: hårfin roseguld-ram + lätt transparent bakgrund som smälter in i natten (ingen tjock kant).
+// Sömlösa fält: hårfin roseguld-ram + lätt genomskinlig vit bakgrund som smälter in i den ljusa ytan.
 const inp = {
   width: '100%', padding: '13px 15px', borderRadius: 14, fontSize: 15, color: D.ink,
-  background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(230,181,154,0.32)', outline: 'none',
+  background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(176,106,72,0.35)', outline: 'none',
 }
-// Mjuk, varm knapp (pill) med diskret glöd, inte en hård SaaS-knapp.
+// Mjuk, varm knapp (pill) med diskret glöd. Mörk, varm gradient + vit text -> tydlig kontrast mot ljust.
 const btnSoft = {
   border: 'none', cursor: 'pointer', borderRadius: 999, padding: '13px 26px', fontSize: 15, fontWeight: 800,
-  color: '#2a1622', background: 'linear-gradient(105deg, #f0cf9a, #e9b89e 55%, #f3acc4)',
-  boxShadow: '0 10px 30px rgba(244,169,190,0.22)',
+  color: '#fff', background: 'linear-gradient(105deg, #a8551c, #a84636 50%, #b02c54)',
+  boxShadow: '0 10px 26px rgba(176,44,84,0.26)',
 }
 const btnGhost = {
   textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999,
   padding: '13px 24px', fontSize: 15, fontWeight: 800, color: D.ink,
-  background: 'transparent', border: '1px solid rgba(230,181,154,0.40)',
+  background: 'rgba(255,255,255,0.45)', border: '1px solid rgba(176,106,72,0.45)',
 }

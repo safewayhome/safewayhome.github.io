@@ -1,6 +1,6 @@
 /* Fristående stilbas för den publika undersidan /ideel. Medvetet SKILD från tavlans index.css
    (som sätter body overflow:hidden för whiteboarden): den här sidan ska scrolla som en vanlig sajt. */
-:root { color-scheme: dark; }
+:root { color-scheme: light; }
 
 * { box-sizing: border-box; }
 
@@ -8,8 +8,9 @@ html, body, #root { margin: 0; min-height: 100%; }
 
 body {
   font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  background: #0b1022;
-  color: #ede7f0;
+  /* Ljus, varm gräddvit gryningsbakgrund med en mjuk varm ton i hörnen (tydligare än natt-versionen). */
+  background: #fbf4ef;
+  color: #3b2f3a;
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;
   /* Skydd mot oavsiktlig horisontell scroll (sidan ska bara scrolla vertikalt). */
@@ -21,7 +22,7 @@ a { color: inherit; }
 
 /* Synlig tangentbordsfokus (WCAG 2.4.7). Fälten har outline:none + inline-border, så vi använder en
    mjuk roseguld box-shadow-ring (påverkas inte av inline-stilen) för inputs/textarea, och outline för
-   knappar/länkar. Tonen är varm, inte hård, för att passa den ombonade natt-känslan. */
+   knappar/länkar. Tonen är varm, inte hård, för att passa den ombonade, ljusa känslan. */
 input:focus-visible, textarea:focus-visible {
   border-color: #e6b59a;
   box-shadow: 0 0 0 3px rgba(230, 181, 154, 0.40);
@@ -31,7 +32,7 @@ button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible {
   outline-offset: 3px;
 }
 
-/* Mjuk entré för textavsnitt + en lugn andning på de diffusa ljus-aurorna (gatlyktor i natten).
+/* Mjuk entré för textavsnitt + en lugn andning på de diffusa, varma ljus-aurorna.
    prefers-reduced-motion stänger av all rörelse för den som föredrar det. */
 @keyframes ideel-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @keyframes ideel-aura { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.06); } }
@@ -46,9 +47,9 @@ button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible {
 .ideel-led-glow { animation: ideel-breathe 6.5s ease-in-out infinite; }
 .ideel-step { opacity: 0.4; animation: ideel-step 3.6s ease-in-out infinite; }
 
-/* tunna, varma scrollbars i linje med natt-estetiken */
+/* tunna, varma scrollbars i linje med den ljusa gryningsytan */
 *::-webkit-scrollbar { width: 11px; height: 11px; }
-*::-webkit-scrollbar-thumb { background: rgba(240,207,140,0.22); border-radius: 8px; border: 3px solid #0b1022; }
+*::-webkit-scrollbar-thumb { background: rgba(176,106,72,0.30); border-radius: 8px; border: 3px solid #fbf4ef; }
 *::-webkit-scrollbar-track { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
