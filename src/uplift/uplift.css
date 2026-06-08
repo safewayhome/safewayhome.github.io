@@ -1,0 +1,209 @@
+/* Fristående stilbas för dev-undersidan /UpliftModeling. Mörk natt-estetik (#0A0E1A) med varma accenter
+   i guld, roseguld och mjuk rosa. Medvetet SKILD från tavlans index.css (egen, lätt bundle med Leaflet).
+   Den här sidan FYLLER hela fönstret (karta i botten, glaspanel ovanpå) och scrollar inte själv. */
+:root { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+
+body {
+  /* UI/brödtext: Nunito (varumärkets font). Rubriker + siffror: Sora (ren, geometrisk, premium). */
+  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #0A0E1A;
+  color: #eef1fb;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;   /* sidan är en helskärms-arbetsyta; panelen scrollar internt vid behov */
+}
+
+.uplift-root { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+
+/* ── Karta ─────────────────────────────────────────────────────────────── */
+.uplift-map { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.uplift-map.leaflet-container, .leaflet-container { background: #0A0E1A; font-family: inherit; outline: none; }
+
+/* Glödande zoner: mjuk färgad fyllning + glöd (CSS-filter sätts inline på SVG-pathen per beslut) och en
+   subtil pulsering. transition ger en mjuk omfärgning när ett beslut ändras. */
+.uplift-zone { transition: fill .5s ease, stroke .5s ease, fill-opacity .5s ease, stroke-opacity .5s ease; }
+@keyframes uplift-pulse-gold { 0%, 100% { fill-opacity: .40; } 50% { fill-opacity: .54; } }
+@keyframes uplift-pulse-pink { 0%, 100% { fill-opacity: .34; } 50% { fill-opacity: .50; } }
+.uplift-zone--premium  { animation: uplift-pulse-gold 5.5s ease-in-out infinite; }
+.uplift-zone--standard { animation: uplift-pulse-pink 6.8s ease-in-out infinite; }
+.uplift-zone--none     { animation: none; }
+
+/* Alltid-synlig etikett vid stadsdelens centrum. divIcon-rutan (130x36) ankras med sin mittpunkt på
+   koordinaten av Leaflet, så vi centrerar bara pillret inuti rutan med flex (ingen egen translate). */
+.uplift-zonelabel { background: none; border: none; display: flex; align-items: center; justify-content: center; }
+.uplift-zonelabel__inner {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(10, 14, 26, 0.62); border: 1px solid rgba(231, 169, 139, 0.22);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  font-size: 11.5px; font-weight: 700; color: #eef1fb;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+.uplift-zonelabel--none .uplift-zonelabel__inner { color: #9aa3bd; opacity: 0.85; }
+.uplift-zonelabel__dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+.uplift-zonelabel__name { letter-spacing: 0.01em; }
+
+/* Leaflet-kontroller + popup i mörk, varm ton. */
+.leaflet-control-zoom { border: none !important; box-shadow: 0 4px 18px rgba(0,0,0,0.5) !important; }
+.leaflet-control-zoom a {
+  background: rgba(14, 19, 36, 0.85); color: #e7a98b;
+  border: 1px solid rgba(231, 169, 139, 0.2) !important; width: 32px; height: 32px; line-height: 30px;
+}
+.leaflet-control-zoom a:hover { background: rgba(26, 32, 56, 0.95); color: #f2c879; }
+.leaflet-bar a:first-child { border-radius: 10px 10px 0 0; }
+.leaflet-bar a:last-child { border-radius: 0 0 10px 10px; }
+.leaflet-control-attribution {
+  background: rgba(10, 14, 26, 0.66) !important; color: #6b7390 !important;
+  font-size: 10.5px; padding: 2px 7px; border-radius: 8px 0 0 0;
+}
+.leaflet-control-attribution a { color: #a6b0cf !important; }
+
+.uplift-popup .leaflet-popup-content-wrapper {
+  background: rgba(13, 18, 34, 0.94); color: #eef1fb;
+  border: 1px solid rgba(231, 169, 139, 0.30); border-radius: 16px;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+.uplift-popup .leaflet-popup-tip { background: rgba(13, 18, 34, 0.94); box-shadow: none; }
+.uplift-popup .leaflet-popup-content { margin: 13px 15px; font-family: 'Nunito', sans-serif; line-height: 1.4; }
+.uplift-popup a.leaflet-popup-close-button { color: #737d9e; padding: 7px 7px 0 0; }
+.uplift-popup a.leaflet-popup-close-button:hover { color: #e7a98b; }
+
+.uplift-pop__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.uplift-pop__head b { font-family: 'Sora', sans-serif; font-size: 15px; }
+.uplift-chip { font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 999px; border: 1px solid; text-transform: uppercase; letter-spacing: 0.04em; }
+.uplift-pop__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 12.5px; }
+.uplift-pop__grid > div { display: flex; flex-direction: column; }
+.uplift-pop__grid span { color: #737d9e; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+.uplift-pop__grid b { font-family: 'Sora', sans-serif; font-weight: 600; font-variant-numeric: tabular-nums; }
+.uplift-pop__reason { margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(231,169,139,0.16); font-size: 12px; color: #a6b0cf; }
+.uplift-pos { color: #7fe0b0; } .uplift-neg { color: #ef9aa9; }
+
+/* ── Rubrik (uppe till vänster) ─────────────────────────────────────────── */
+.uplift-header {
+  position: absolute; top: clamp(14px, 3vw, 26px); left: clamp(14px, 3vw, 26px); z-index: 500;
+  max-width: min(420px, calc(100vw - 32px)); pointer-events: none;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
+}
+.uplift-header__eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: #e7a98b; }
+.uplift-header__title {
+  font-family: 'Sora', sans-serif; font-weight: 700; margin: 4px 0 6px;
+  font-size: clamp(22px, 3.4vw, 34px); line-height: 1.08;
+  background: linear-gradient(100deg, #f2c879, #e7a98b 45%, #f4a8c8);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.uplift-header__sub { margin: 0; font-size: 13px; color: #a6b0cf; line-height: 1.45; max-width: 380px; }
+.uplift-source { margin-top: 10px; display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: #737d9e; }
+.uplift-source__dot { width: 8px; height: 8px; border-radius: 50%; background: #caa24e; box-shadow: 0 0 8px #caa24e; }
+.uplift-source__dot.is-live { background: #7fe0b0; box-shadow: 0 0 8px #7fe0b0; }
+
+/* ── Glaspanel (uppe till höger) ────────────────────────────────────────── */
+.uplift-panel {
+  position: absolute; top: clamp(14px, 3vw, 26px); right: clamp(14px, 3vw, 26px); z-index: 600;
+  width: min(366px, calc(100vw - 28px)); max-height: calc(100vh - clamp(28px, 6vw, 52px));
+  background: rgba(14, 19, 36, 0.62); border: 1px solid rgba(231, 169, 139, 0.26); border-radius: 22px;
+  -webkit-backdrop-filter: blur(18px) saturate(125%); backdrop-filter: blur(18px) saturate(125%);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.uplift-panel__scroll { max-height: calc(100vh - clamp(28px, 6vw, 52px)); overflow-y: auto; padding: 20px 20px 22px; }
+
+.uplift-net { text-align: left; }
+.uplift-net__label { font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #737d9e; }
+.uplift-net__value {
+  font-family: 'Sora', sans-serif; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: clamp(30px, 5vw, 40px); line-height: 1.05; margin: 3px 0 4px;
+  background: linear-gradient(100deg, #f2c879, #e7a98b 55%, #f4a8c8);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 26px rgba(242, 200, 121, 0.18);
+}
+.uplift-net__sub { font-size: 12px; color: #a6b0cf; }
+
+/* Radiell mätare: gratis hemresor */
+.uplift-gauge { position: relative; width: 140px; height: 140px; margin: 16px auto 4px; }
+.uplift-gauge__svg { width: 140px; height: 140px; display: block; }
+.uplift-gauge__track { fill: none; stroke: rgba(231, 169, 139, 0.14); stroke-width: 11; }
+.uplift-gauge__arc {
+  fill: none; stroke: url(#uplift-gauge-grad); stroke-width: 11; stroke-linecap: round;
+  transition: stroke-dashoffset .6s cubic-bezier(.2, .7, .2, 1);
+  filter: drop-shadow(0 0 6px rgba(242, 200, 121, 0.5));
+}
+.uplift-gauge__center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.uplift-gauge__num { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 30px; font-variant-numeric: tabular-nums; color: #f2c879; line-height: 1; }
+.uplift-gauge__cap { font-size: 10.5px; color: #a6b0cf; margin-top: 2px; }
+.uplift-gauge__foot { text-align: center; font-size: 11px; color: #737d9e; margin-top: 2px; }
+
+/* Tre stat-kort */
+.uplift-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.uplift-stat { background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(231, 169, 139, 0.14); border-radius: 13px; padding: 10px 8px; text-align: center; }
+.uplift-stat__big { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums; }
+.uplift-stat__small { font-size: 10.5px; color: #a6b0cf; margin-top: 3px; line-height: 1.25; }
+
+/* Budgetstapel */
+.uplift-budgetbar { margin-top: 14px; }
+.uplift-budgetbar__row { display: flex; justify-content: space-between; font-size: 12px; color: #a6b0cf; margin-bottom: 5px; }
+.uplift-budgetbar__row span:last-child { font-family: 'Sora', sans-serif; font-weight: 700; color: #eef1fb; }
+.uplift-budgetbar__track { height: 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.uplift-budgetbar__fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #e06f9b, #f2c879); transition: width .5s cubic-bezier(.2,.7,.2,1); }
+.uplift-budgetbar__hint { font-size: 10.5px; color: #737d9e; margin-top: 4px; }
+
+.uplift-divider { height: 1px; background: rgba(231, 169, 139, 0.16); margin: 18px 0 16px; }
+
+/* Reglage */
+.uplift-slider { display: block; margin-bottom: 16px; }
+.uplift-slider__top { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; color: #c6cce0; margin-bottom: 7px; }
+.uplift-slider__val { font-family: 'Sora', sans-serif; font-weight: 700; color: #f2c879; font-variant-numeric: tabular-nums; }
+.uplift-slider input[type="range"] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, #e7a98b var(--pct, 0%), rgba(255, 255, 255, 0.10) var(--pct, 0%));
+}
+.uplift-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe6c2, #f2c879 60%, #caa24e);
+  border: 2px solid #0A0E1A; box-shadow: 0 0 10px rgba(242, 200, 121, 0.7); margin-top: 0;
+}
+.uplift-slider input[type="range"]::-moz-range-thumb {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid #0A0E1A;
+  background: radial-gradient(circle at 35% 30%, #ffe6c2, #f2c879 60%, #caa24e); box-shadow: 0 0 10px rgba(242, 200, 121, 0.7);
+}
+.uplift-slider input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: transparent; }
+.uplift-slider input[type="range"]:focus-visible { box-shadow: 0 0 0 3px rgba(231, 169, 139, 0.35); }
+
+.uplift-reset {
+  width: 100%; margin-top: 2px; padding: 11px; border-radius: 12px; cursor: pointer;
+  background: transparent; border: 1px solid rgba(231, 169, 139, 0.35); color: #e7a98b;
+  font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 12.5px; letter-spacing: 0.04em;
+  transition: background .25s ease, color .25s ease, border-color .25s ease;
+}
+.uplift-reset:hover { background: rgba(231, 169, 139, 0.12); color: #f2c879; border-color: rgba(231, 169, 139, 0.5); }
+.uplift-reset:focus-visible { outline: 2px solid #e7a98b; outline-offset: 2px; }
+
+/* Legend */
+.uplift-legend { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+.uplift-legend__item { display: flex; align-items: center; gap: 9px; font-size: 12px; color: #a6b0cf; }
+.uplift-legend__dot { width: 11px; height: 11px; border-radius: 50%; flex: none; box-shadow: 0 0 9px currentColor; }
+
+/* Tunna, mörka scrollbars i panelen */
+.uplift-panel__scroll::-webkit-scrollbar { width: 9px; }
+.uplift-panel__scroll::-webkit-scrollbar-thumb { background: rgba(231, 169, 139, 0.25); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+.uplift-panel__scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Responsivt: på smala skärmar blir panelen ett ark i underkant ──────── */
+@media (max-width: 760px) {
+  .uplift-header { max-width: calc(100vw - 28px); }
+  .uplift-header__sub { display: none; }
+  .uplift-panel {
+    top: auto; bottom: 0; left: 0; right: 0; width: 100%;
+    max-height: 56vh; border-radius: 22px 22px 0 0; border-bottom: none;
+  }
+  .uplift-panel__scroll { max-height: 56vh; padding: 16px 16px 20px; }
+  /* Lyft Leaflets nedre kontroller (zoom + attribution) OVANFÖR bottenarket: CARTO/OSM-attributionen
+     ska alltid synas (licenskrav), och zoomknapparna ska gå att nå. */
+  .leaflet-bottom { bottom: 57vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}

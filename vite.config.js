@@ -6,9 +6,10 @@ import { fileURLToPath } from 'url'
 // The Actions workflow passes BOARD_BASE explicitly ('/' for a *.github.io repo, '/<repo>/' for a
 // project repo), so this default just needs to be correct for the root-site case + local dev.
 //
-// Multi-page: utöver tavlan (index.html) bygger vi den fristående, publika undersidan /ideel
-// (ideel/index.html -> dist/ideel/index.html, serveras på ledmig.nu/ideel). Den är medvetet skild
-// från den inloggningsgrindade dev-tavlan: en egen, lätt bundle utan reactflow/presence.
+// Multi-page: utöver tavlan (index.html) bygger vi de fristående undersidorna /ideel och
+// /UpliftModeling (egen mapp -> dist/<mapp>/index.html, serveras på ledmig.nu/<mapp>). Båda är medvetet
+// skilda från den inloggningsgrindade dev-tavlan: egna, lätta bundles (ideel utan reactflow, uplift med
+// bara Leaflet) som code-splittas från tavlans tunga bundle.
 const entry = (p) => fileURLToPath(new URL(p, import.meta.url))
 
 export default defineConfig(({ command }) => ({
@@ -23,6 +24,7 @@ export default defineConfig(({ command }) => ({
       input: {
         main: entry('./index.html'),
         ideel: entry('./ideel/index.html'),
+        uplift: entry('./UpliftModeling/index.html'),
       },
     },
   },

@@ -1,0 +1,488 @@
+{
+  "ok": true,
+  "city": {
+    "name": "Umeå",
+    "center": [
+      63.8258,
+      20.263
+    ],
+    "zoom": 12
+  },
+  "ride_cost_sek": 150.0,
+  "defaults": {
+    "budget_sek": 250000.0,
+    "cost_standard": 8.0,
+    "cost_premium": 32.0,
+    "mult_standard": 1.0,
+    "mult_premium": 1.5
+  },
+  "districts": [
+    {
+      "key": "centrum",
+      "name": "Centrum",
+      "households": 5200,
+      "median_income_ksek": 300,
+      "median_age": 40,
+      "owner_share": 0.18,
+      "center": [
+        63.8258,
+        20.263
+      ],
+      "polygon": [
+        [
+          63.83223,
+          20.263
+        ],
+        [
+          63.830448,
+          20.273537
+        ],
+        [
+          63.8258,
+          20.282174
+        ],
+        [
+          63.821179,
+          20.273475
+        ],
+        [
+          63.817396,
+          20.263
+        ],
+        [
+          63.820766,
+          20.251589
+        ],
+        [
+          63.8258,
+          20.245744
+        ],
+        [
+          63.830313,
+          20.252769
+        ]
+      ],
+      "uplift_sek": 30.58
+    },
+    {
+      "key": "haga",
+      "name": "Haga",
+      "households": 2600,
+      "median_income_ksek": 370,
+      "median_age": 50,
+      "owner_share": 0.6,
+      "center": [
+        63.8205,
+        20.247
+      ],
+      "polygon": [
+        [
+          63.827041,
+          20.247
+        ],
+        [
+          63.824434,
+          20.255918
+        ],
+        [
+          63.8205,
+          20.262819
+        ],
+        [
+          63.815547,
+          20.258226
+        ],
+        [
+          63.814916,
+          20.247
+        ],
+        [
+          63.816617,
+          20.238199
+        ],
+        [
+          63.8205,
+          20.231524
+        ],
+        [
+          63.82501,
+          20.236777
+        ]
+      ],
+      "uplift_sek": 51.25
+    },
+    {
+      "key": "alidhem",
+      "name": "Ålidhem",
+      "households": 6800,
+      "median_income_ksek": 160,
+      "median_age": 25,
+      "owner_share": 0.05,
+      "center": [
+        63.819,
+        20.31
+      ],
+      "polygon": [
+        [
+          63.826715,
+          20.31
+        ],
+        [
+          63.82528,
+          20.324235
+        ],
+        [
+          63.819,
+          20.328025
+        ],
+        [
+          63.812667,
+          20.324353
+        ],
+        [
+          63.810193,
+          20.31
+        ],
+        [
+          63.812887,
+          20.296145
+        ],
+        [
+          63.819,
+          20.292387
+        ],
+        [
+          63.824425,
+          20.297705
+        ]
+      ],
+      "uplift_sek": 7.61
+    },
+    {
+      "key": "mariehem",
+      "name": "Mariehem",
+      "households": 4200,
+      "median_income_ksek": 285,
+      "median_age": 42,
+      "owner_share": 0.5,
+      "center": [
+        63.844,
+        20.278
+      ],
+      "polygon": [
+        [
+          63.851811,
+          20.278
+        ],
+        [
+          63.849577,
+          20.29065
+        ],
+        [
+          63.844,
+          20.292273
+        ],
+        [
+          63.838845,
+          20.289695
+        ],
+        [
+          63.837764,
+          20.278
+        ],
+        [
+          63.838872,
+          20.266367
+        ],
+        [
+          63.844,
+          20.260219
+        ],
+        [
+          63.849783,
+          20.264881
+        ]
+      ],
+      "uplift_sek": 38.71
+    },
+    {
+      "key": "ersboda",
+      "name": "Ersboda",
+      "households": 4800,
+      "median_income_ksek": 245,
+      "median_age": 38,
+      "owner_share": 0.45,
+      "center": [
+        63.856,
+        20.29
+      ],
+      "polygon": [
+        [
+          63.862247,
+          20.29
+        ],
+        [
+          63.860778,
+          20.300844
+        ],
+        [
+          63.856,
+          20.306919
+        ],
+        [
+          63.850707,
+          20.302013
+        ],
+        [
+          63.849487,
+          20.29
+        ],
+        [
+          63.851036,
+          20.278734
+        ],
+        [
+          63.856,
+          20.275347
+        ],
+        [
+          63.86048,
+          20.279834
+        ]
+      ],
+      "uplift_sek": 33.4
+    },
+    {
+      "key": "tomtebo",
+      "name": "Tomtebo",
+      "households": 3600,
+      "median_income_ksek": 360,
+      "median_age": 39,
+      "owner_share": 0.66,
+      "center": [
+        63.812,
+        20.332
+      ],
+      "polygon": [
+        [
+          63.820093,
+          20.332
+        ],
+        [
+          63.817391,
+          20.344216
+        ],
+        [
+          63.812,
+          20.349742
+        ],
+        [
+          63.807473,
+          20.342258
+        ],
+        [
+          63.804288,
+          20.332
+        ],
+        [
+          63.806667,
+          20.319916
+        ],
+        [
+          63.812,
+          20.314531
+        ],
+        [
+          63.816991,
+          20.32069
+        ]
+      ],
+      "uplift_sek": 48.95
+    },
+    {
+      "key": "umedalen",
+      "name": "Umedalen",
+      "households": 2200,
+      "median_income_ksek": 420,
+      "median_age": 52,
+      "owner_share": 0.78,
+      "center": [
+        63.833,
+        20.185
+      ],
+      "polygon": [
+        [
+          63.840079,
+          20.185
+        ],
+        [
+          63.837463,
+          20.19512
+        ],
+        [
+          63.833,
+          20.199247
+        ],
+        [
+          63.82865,
+          20.194865
+        ],
+        [
+          63.826544,
+          20.185
+        ],
+        [
+          63.829084,
+          20.176121
+        ],
+        [
+          63.833,
+          20.168776
+        ],
+        [
+          63.837249,
+          20.175364
+        ]
+      ],
+      "uplift_sek": 60.56
+    }
+  ],
+  "uplift": {
+    "centrum": 30.57755,
+    "haga": 51.24668,
+    "alidhem": 7.610411,
+    "mariehem": 38.709321,
+    "ersboda": 33.399651,
+    "tomtebo": 48.952697,
+    "umedalen": 60.557739
+  },
+  "solution": {
+    "ok": true,
+    "solver": "OPTIMAL",
+    "economics": {
+      "budget_sek": 250000.0,
+      "cost_standard": 8.0,
+      "cost_premium": 32.0,
+      "mult_standard": 1.0,
+      "mult_premium": 1.5,
+      "ride_cost_sek": 150.0
+    },
+    "kpis": {
+      "net_profit_sek": 757612.35,
+      "gross_donations_sek": 991212.35,
+      "spend_sek": 233600.0,
+      "budget_sek": 250000.0,
+      "budget_utilization": 0.9344,
+      "units_standard": 20400,
+      "units_premium": 2200,
+      "units_total": 22600,
+      "free_rides_funded": 5050,
+      "districts_premium": 1,
+      "districts_standard": 5,
+      "districts_skipped": 1
+    },
+    "districts": [
+      {
+        "key": "centrum",
+        "name": "Centrum",
+        "households": 5200,
+        "uplift_sek": 30.58,
+        "decision": "standard",
+        "units": 5200,
+        "cost_sek": 41600.0,
+        "gross_sek": 159003.26,
+        "net_sek": 117403.26,
+        "roi": 2.822,
+        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+      },
+      {
+        "key": "haga",
+        "name": "Haga",
+        "households": 2600,
+        "uplift_sek": 51.25,
+        "decision": "standard",
+        "units": 2600,
+        "cost_sek": 20800.0,
+        "gross_sek": 133241.37,
+        "net_sek": 112441.37,
+        "roi": 5.406,
+        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+      },
+      {
+        "key": "alidhem",
+        "name": "Ålidhem",
+        "households": 6800,
+        "uplift_sek": 7.61,
+        "decision": "none",
+        "units": 0,
+        "cost_sek": 0.0,
+        "gross_sek": 0.0,
+        "net_sek": 0.0,
+        "roi": null,
+        "reason": "Avstår: ett utskick skulle gå med förlust (lyftet täcker inte kostnaden)."
+      },
+      {
+        "key": "mariehem",
+        "name": "Mariehem",
+        "households": 4200,
+        "uplift_sek": 38.71,
+        "decision": "standard",
+        "units": 4200,
+        "cost_sek": 33600.0,
+        "gross_sek": 162579.15,
+        "net_sek": 128979.15,
+        "roi": 3.839,
+        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+      },
+      {
+        "key": "ersboda",
+        "name": "Ersboda",
+        "households": 4800,
+        "uplift_sek": 33.4,
+        "decision": "standard",
+        "units": 4800,
+        "cost_sek": 38400.0,
+        "gross_sek": 160318.32,
+        "net_sek": 121918.32,
+        "roi": 3.175,
+        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+      },
+      {
+        "key": "tomtebo",
+        "name": "Tomtebo",
+        "households": 3600,
+        "uplift_sek": 48.95,
+        "decision": "standard",
+        "units": 3600,
+        "cost_sek": 28800.0,
+        "gross_sek": 176229.71,
+        "net_sek": 147429.71,
+        "roi": 5.119,
+        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+      },
+      {
+        "key": "umedalen",
+        "name": "Umedalen",
+        "households": 2200,
+        "uplift_sek": 60.56,
+        "decision": "premium",
+        "units": 2200,
+        "cost_sek": 70400.0,
+        "gross_sek": 199840.54,
+        "net_sek": 129440.54,
+        "roi": 1.839,
+        "reason": "Premium: det dyrare utskicket maximerar nettovinsten här."
+      }
+    ]
+  },
+  "model": {
+    "estimator": "econml.dml.CausalForestDML",
+    "optimizer": "ortools.sat (CP-SAT, multiple-choice knapsack)",
+    "features": [
+      "median_income_ksek",
+      "median_age",
+      "owner_share"
+    ],
+    "objective": "Maximera finansiell nettovinst (donationer minus produkt- och portokostnad)."
+  }
+}
