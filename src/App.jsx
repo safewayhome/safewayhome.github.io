@@ -42,6 +42,13 @@ const VIEWS = [
   { key: 'chat', label: 'Utvecklingschatt', glyph: '💬' },
 ]
 
+// Fristående undersidor (egna Vite-bundles, inte interna vyer): öppnas som vanliga länkar i en NY sidladdning.
+// De ligger som egna "tabbar" i navbaren bredvid vyerna, med en ↗ som visar att de går till en annan sida.
+const PAGES = [
+  { key: 'uplift', label: 'Uplift', glyph: '📈', href: '/UpliftModeling/', title: 'Uplift-modellering: kampanjoptimering över Umeå' },
+  { key: 'ideel', label: 'Ideell förening', glyph: '💞', href: '/ideel/', title: 'Ideell förening: ge röst åt de tysta' },
+]
+
 export default function App() {
   const tasks = useTasks()
   const people = usePeople()
@@ -252,6 +259,16 @@ function TopBar(props) {
           <span style={{ marginRight: 6 }}>{v.glyph}</span>{v.label}
         </button>
       ))}
+      {/* Undersidorna som egna tabbar: outline + ↗ skiljer dem från vyerna (de öppnar en annan sida). */}
+      {PAGES.map((p) => (
+        <a key={p.key} href={p.href} title={p.title} style={{
+          textDecoration: 'none', border: `1px solid ${T.line}`, background: T.panel, color: T.ink,
+          borderRadius: 9, padding: '6px 12px', fontWeight: 700, fontSize: 13.5, whiteSpace: 'nowrap',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}>
+          <span>{p.glyph}</span>{p.label}<span style={{ fontSize: 11, opacity: 0.6 }}>↗</span>
+        </a>
+      ))}
     </div>
   )
 
@@ -352,6 +369,18 @@ function MobileDrawer(props) {
                 padding: '11px 12px', fontWeight: 700, fontSize: 14,
                 background: view === v.key ? T.roseSoft : T.panel, color: T.ink,
               }}><span style={{ marginRight: 8 }}>{v.glyph}</span>{v.label}</button>
+            ))}
+          </div>
+        </DrawerSection>
+
+        <DrawerSection title="Sidor">
+          <div style={{ display: 'grid', gap: 6 }}>
+            {PAGES.map((p) => (
+              <a key={p.key} href={p.href} onClick={onClose} title={p.title} style={{
+                textDecoration: 'none', textAlign: 'left', border: `1px solid ${T.line}`, borderRadius: 11,
+                padding: '11px 12px', fontWeight: 700, fontSize: 14, background: T.panel, color: T.ink,
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}><span>{p.glyph}</span>{p.label}<span style={{ marginLeft: 'auto', opacity: 0.6 }}>↗</span></a>
             ))}
           </div>
         </DrawerSection>
