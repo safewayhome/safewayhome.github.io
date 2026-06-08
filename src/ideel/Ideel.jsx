@@ -167,8 +167,8 @@ function WindingPath({ w, h }) {
 function Hero({ onShare }) {
   return (
     <header style={{ position: 'relative', zIndex: 1, textAlign: 'center', paddingTop: 'clamp(74px, 14vh, 144px)', paddingBottom: 'clamp(28px, 6vh, 60px)' }}>
-      <div style={{ fontSize: 26, marginBottom: 18, opacity: 0.9 }}>💗</div>
-      <h1 style={{ ...softHeading, fontSize: 'clamp(32px, 6.4vw, 58px)', margin: '0 0 20px' }}>
+      <Flourish id="fl-hero" mb={22} />
+      <h1 style={{ ...softHeading, fontSize: 'clamp(34px, 6.6vw, 62px)', margin: '0 0 20px' }}>
         Vi ger röst åt de tysta
       </h1>
       <p style={{ ...lead, margin: '0 auto 14px', maxWidth: 620 }}>
@@ -180,8 +180,8 @@ function Hero({ onShare }) {
         vägen till vår kostnadsfria trygghetsapp.
       </p>
       <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <button onClick={onShare} style={btnSoft}>Dela din berättelse</button>
-        <a href={APP_URL} style={btnGhost}>Öppna appen</a>
+        <button onClick={onShare} className="ideel-btn ideel-btn--primary">Dela din berättelse</button>
+        <a href={APP_URL} className="ideel-btn ideel-btn--ghost">Öppna appen</a>
       </div>
     </header>
   )
@@ -249,7 +249,7 @@ function StoryConcept({ onShare }) {
           <b style={{ color: D.gold }}>Helt kostnadsfritt:</b> appen LedMig finansieras ideellt och har inga
           dolda avgifter, ingen reklam och inga kommersiella vinstintressen.
         </p>
-        <button onClick={onShare} style={{ ...btnSoft, marginTop: 18 }}>Jag vill dela min story</button>
+        <button onClick={onShare} className="ideel-btn ideel-btn--primary" style={{ marginTop: 20 }}>Jag vill dela min story</button>
       </div>
     </section>
   )
@@ -283,7 +283,7 @@ function InterviewForm() {
   if (state === 'done') {
     return (
       <div className="ideel-rise" style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 520, margin: '0 auto', padding: '30px 0' }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>💗</div>
+        <Flourish id="fl-done" mb={16} />
         <h2 style={{ ...softHeading, marginBottom: 10 }}>Tack för att du delar</h2>
         <p style={{ ...lead, margin: '0 auto' }}>
           Vi har tagit emot din anmälan och hör av oss om du lämnat en e-post. Din röst gör skillnad.
@@ -339,7 +339,7 @@ function InterviewForm() {
 
         {err && <div role="alert" style={{ fontSize: 13, color: '#c2354f', marginTop: 6 }}>{err}</div>}
 
-        <button type="submit" disabled={state === 'sending'} style={{ ...btnSoft, width: '100%', marginTop: 16, opacity: state === 'sending' ? 0.6 : 1, cursor: state === 'sending' ? 'wait' : 'pointer' }}>
+        <button type="submit" disabled={state === 'sending'} className="ideel-btn ideel-btn--primary" style={{ width: '100%', marginTop: 18 }}>
           {state === 'sending' ? 'Skickar…' : 'Skicka in'}
         </button>
         <p style={{ fontSize: 11.5, color: D.inkFaint, marginTop: 14, lineHeight: 1.55, textAlign: 'center' }}>
@@ -392,7 +392,10 @@ const Field = ({ label, children }) => (
 
 // Mjuk, varm rubrik: text-transparent gradient (guld -> roseguld -> rosa) med en hårfin glöd.
 const softHeading = {
-  fontSize: 'clamp(23px, 4.2vw, 34px)', fontWeight: 800, lineHeight: 1.16, margin: 0, letterSpacing: 0.2,
+  // Stora titlar i Fraunces (mjuk, varm display-serif) med hög optisk storlek för en handgjord känsla.
+  fontFamily: "'Fraunces', Georgia, 'Times New Roman', serif",
+  fontVariationSettings: "'opsz' 144",
+  fontSize: 'clamp(24px, 4.4vw, 36px)', fontWeight: 800, lineHeight: 1.14, margin: 0, letterSpacing: 0.2,
   // Mörkare, varma toningar (guld -> roseguld -> ros) så rubriken är mjuk MEN tydligt läsbar mot ljust (WCAG AA).
   background: 'linear-gradient(104deg, #8f5820, #984f3a 48%, #9a3556)',
   WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
@@ -400,18 +403,26 @@ const softHeading = {
 }
 const lead = { fontSize: 'clamp(15px, 2.2vw, 17px)', color: D.inkSoft, lineHeight: 1.65, maxWidth: 640 }
 // Sömlösa fält: hårfin roseguld-ram + lätt genomskinlig vit bakgrund som smälter in i den ljusa ytan.
+// UI-text i Nunito (inte sidans Shantell-handstil) för skärpa när man fyller i formuläret.
 const inp = {
   width: '100%', padding: '13px 15px', borderRadius: 14, fontSize: 15, color: D.ink,
+  fontFamily: "'Nunito', system-ui, sans-serif",
   background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(176,106,72,0.35)', outline: 'none',
 }
-// Mjuk, varm knapp (pill) med diskret glöd. Mörk, varm gradient + vit text -> tydlig kontrast mot ljust.
-const btnSoft = {
-  border: 'none', cursor: 'pointer', borderRadius: 999, padding: '13px 26px', fontSize: 15, fontWeight: 800,
-  color: '#fff', background: 'linear-gradient(105deg, #a8551c, #a84636 50%, #b02c54)',
-  boxShadow: '0 10px 26px rgba(176,44,84,0.26)',
-}
-const btnGhost = {
-  textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8, borderRadius: 999,
-  padding: '13px 24px', fontSize: 15, fontWeight: 800, color: D.ink,
-  background: 'rgba(255,255,255,0.45)', border: '1px solid rgba(176,106,72,0.45)',
+
+// Liten, handritad swash-flourish (SVG, inget emoji): en mjuk våg i guld -> ros som knyter an till Leden.
+function Flourish({ id, mb = 18 }) {
+  return (
+    <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'center', marginBottom: mb }}>
+      <svg width="66" height="18" viewBox="0 0 66 18" fill="none">
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#c2873f" /><stop offset="100%" stopColor="#cf5e82" />
+          </linearGradient>
+        </defs>
+        <path d="M2 12 C 15 12, 17 5, 25 5 C 32 5, 32 12, 40 12 C 49 12, 51 5, 64 5"
+          stroke={`url(#${id})`} strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </div>
+  )
 }

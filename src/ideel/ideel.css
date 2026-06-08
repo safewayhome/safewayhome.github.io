@@ -7,7 +7,9 @@
 html, body, #root { margin: 0; min-height: 100%; }
 
 body {
-  font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Sidans text: Shantell Sans (handgjord, lekfull men läsbar). Rubriker sätts till Fraunces inline,
+     UI (knappar/fält) till Nunito. Nunito + system-sans som reserv tills webbtypsnitten laddats. */
+  font-family: 'Shantell Sans', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
   /* Ljus, varm gräddvit gryningsbakgrund med en mjuk varm ton i hörnen (tydligare än natt-versionen). */
   background: #fbf4ef;
   color: #3b2f3a;
@@ -46,6 +48,53 @@ button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible {
 @keyframes ideel-step { 0%, 100% { opacity: 0.22; } 45% { opacity: 0.72; } }
 .ideel-led-glow { animation: ideel-breathe 6.5s ease-in-out infinite; }
 .ideel-step { opacity: 0.4; animation: ideel-step 3.6s ease-in-out infinite; }
+
+/* Skräddarsydda premium-knappar (INTE de generiska runda pill-knapparna): rektangulära med liten radie,
+   versal text med gles teckenavstånd och fina hover-rörelser. Primär = varm fylld med inre highlight-ram
+   och ett diagonalt ljussvep vid hover (lyfter lätt). Sekundär = kontur i roseguld där en varm fyllning
+   sveper in från vänster och texten blir cream. UI-text i Nunito för skärpa. */
+.ideel-btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 13px;
+  letter-spacing: 0.16em; text-transform: uppercase; text-decoration: none; white-space: nowrap;
+  padding: 16px 30px; border-radius: 3px; border: none; cursor: pointer;
+  overflow: hidden; isolation: isolate;
+  transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s ease, color .3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ideel-btn:disabled { opacity: 0.6; cursor: wait; transform: none; }
+/* Inaktiverad knapp (t.ex. medan formuläret skickas) ska INTE reagera på hover. :disabled:hover har högre
+   specificitet än :hover, så lyft + ljussvep + fyllning neutraliseras när knappen är disabled. */
+.ideel-btn:disabled:hover { transform: none; }
+.ideel-btn--primary:disabled:hover { box-shadow: 0 10px 26px rgba(176,44,84,0.26), inset 0 0 0 1px rgba(255,255,255,0.16), inset 0 1px 0 rgba(255,255,255,0.28); }
+.ideel-btn--primary:disabled:hover::after { transform: translateX(-130%); }
+.ideel-btn--ghost:disabled:hover { color: #3b2f3a; box-shadow: inset 0 0 0 1.5px rgba(149,80,47,0.55); }
+.ideel-btn--ghost:disabled:hover::before { transform: scaleX(0); }
+
+.ideel-btn--primary {
+  color: #fff;
+  background: linear-gradient(105deg, #a8551c, #a84636 50%, #b02c54);
+  box-shadow: 0 10px 26px rgba(176,44,84,0.26), inset 0 0 0 1px rgba(255,255,255,0.16), inset 0 1px 0 rgba(255,255,255,0.28);
+}
+.ideel-btn--primary::after {            /* diagonalt ljussvep, ligger bakom texten */
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(110deg, transparent 32%, rgba(255,255,255,0.38) 50%, transparent 68%);
+  transform: translateX(-130%); transition: transform .7s cubic-bezier(.2,.7,.2,1);
+}
+.ideel-btn--primary:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(176,44,84,0.34), inset 0 0 0 1px rgba(255,255,255,0.22), inset 0 1px 0 rgba(255,255,255,0.30); }
+.ideel-btn--primary:hover::after { transform: translateX(130%); }
+
+.ideel-btn--ghost {
+  color: #3b2f3a; background: transparent;
+  box-shadow: inset 0 0 0 1.5px rgba(149,80,47,0.55);
+}
+.ideel-btn--ghost::before {            /* varm fyllning som sveper in från vänster */
+  content: ''; position: absolute; inset: 0; z-index: -1; transform-origin: left center;
+  transform: scaleX(0); transition: transform .42s cubic-bezier(.2,.7,.2,1);
+  background: linear-gradient(105deg, #a8551c, #a84636 50%, #b02c54);
+}
+.ideel-btn--ghost:hover { color: #fff; box-shadow: inset 0 0 0 1.5px rgba(149,80,47,0); }
+.ideel-btn--ghost:hover::before { transform: scaleX(1); }
 
 /* tunna, varma scrollbars i linje med den ljusa gryningsytan */
 *::-webkit-scrollbar { width: 11px; height: 11px; }
