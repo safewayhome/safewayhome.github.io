@@ -61,6 +61,10 @@ const ZONE = {
 
 const fmtSEK = (x) => `${Math.round(x).toLocaleString('sv-SE')} kr`
 const fmtInt = (x) => Math.round(x).toLocaleString('sv-SE')
+const fmtMkr = (x) => `${(x / 1e6).toLocaleString('sv-SE', { maximumFractionDigits: 2 })} Mkr`
+
+// Statiska (verkliga SCB-)fält per område, för kartans popup: medianinkomst, andel ägt boende, RegSO-kod.
+const STATIC = Object.fromEntries(baseline.districts.map((d) => [d.key, d]))
 
 export default function Uplift() {
   // Stadsdelarna (geometri + demografi) kommer från den bakade ögonblicksbilden; lyftet kan friskas upp
@@ -136,18 +140,17 @@ function MapCanvas({ districts, city, solution }) {
       attribution: '© OpenStreetMap · © CARTO',
     }).addTo(map)
 
+    // 42 RegSO-zoner: vid så många områden blir alltid-synliga etiketter rörigt, så namnet visas i en
+    // hover-tooltip och full detalj i en popup vid klick/tryck.
     districts.forEach((d) => {
       const poly = L.polygon(d.polygon, {
         className: 'uplift-zone', fillColor: ZONE.none.fill, color: ZONE.none.stroke,
         fillOpacity: ZONE.none.fillOp, weight: ZONE.none.weight, opacity: ZONE.none.strokeOp,
         lineJoin: 'round',
       }).addTo(map)
-      poly.bindPopup('', { className: 'uplift-popup', maxWidth: 280, closeButton: true })
-      const label = L.marker(d.center, {
-        icon: L.divIcon({ className: 'uplift-zonelabel', html: '', iconSize: [120, 34] }),
-        interactive: false, keyboard: false,
-      }).addTo(map)
-      zonesRef.current[d.key] = { poly, label }
+      poly.bindTooltip('', { className: 'uplift-tip', sticky: true, direction: 'top', opacity: 1 })
+      poly.bindPopup('', { className: 'uplift-popup', maxWidth: 300, closeButton: true })
+      zonesRef.current[d.key] = { poly }
     })
 
     mapRef.current = map
@@ -180,32 +183,32 @@ function MapCanvas({ districts, city, solution }) {
         path.classList.remove('uplift-zone--premium', 'uplift-zone--standard', 'uplift-zone--none')
         path.classList.add(`uplift-zone--${ds.decision}`)
       }
+      ref.poly.setTooltipContent(tooltipHtml(ds))
       ref.poly.setPopupContent(popupHtml(ds))
-      ref.label.setIcon(L.divIcon({
-        className: 'uplift-zonelabel', iconSize: [150, 36], html: labelHtml(ds),
-      }))
     })
   }, [solution])
 
   return <div ref={elRef} className="uplift-map" aria-label="Karta över Umeå med modellens kampanjzoner" />
 }
 
-// Liten alltid-synlig etikett vid stadsdelens centrum. Delvis täckta zoner visar täckningsgraden.
-function labelHtml(ds) {
+const decLabel = (dec) => (ZONE[dec] || ZONE.none).label
+
+// Kort hover-tooltip: områdesnamn + beslut + täckning.
+function tooltipHtml(ds) {
   const z = ZONE[ds.decision] || ZONE.none
   const pct = Math.round((ds.coverage ?? 0) * 100)
-  const partial = ds.decision !== 'none' && pct < 100
-  const cov = partial ? `<span class="uplift-zonelabel__cov">${pct}%</span>` : ''
-  return `<div class="uplift-zonelabel__inner uplift-zonelabel--${ds.decision}">
-    <span class="uplift-zonelabel__dot" style="background:${z.accent}"></span>
-    <span class="uplift-zonelabel__name">${esc(ds.name)}</span>${cov}
-  </div>`
+  const tail = ds.decision === 'none' ? 'avstår' : `${z.label} · ${pct}%`
+  return `<span class="uplift-tip__dot" style="background:${z.accent}"></span><b>${esc(ds.name)}</b> <span>${tail}</span>`
 }
 
-// Rik popup vid klick/tryck: visar hur algoritmen resonerat för just den stadsdelen.
+// Rik popup vid klick/tryck: visar hur algoritmen resonerat för just området (med verklig SCB-demografi).
 function popupHtml(ds) {
   const z = ZONE[ds.decision] || ZONE.none
+  const s = STATIC[ds.key] || {}
   const netClass = ds.net_sek >= 0 ? 'pos' : 'neg'
+  const mix = ds.units_premium > 0 && ds.units_standard > 0
+    ? `${fmtInt(ds.units_standard)} std + ${fmtInt(ds.units_premium)} prem`
+    : `${fmtInt(ds.units)} st`
   return `<div class="uplift-pop">
     <div class="uplift-pop__head">
       <b>${esc(ds.name)}</b>
@@ -213,10 +216,10 @@ function popupHtml(ds) {
     </div>
     <div class="uplift-pop__grid">
       <div><span>Lyft</span><b>${ds.uplift_sek.toFixed(1)} kr/hushåll</b></div>
-      <div><span>Täckning</span><b>${Math.round((ds.coverage ?? 0) * 100)}% · ${fmtInt(ds.units)} st</b></div>
-      <div><span>Effektivitet</span><b>${(ds.effectiveness ?? 0).toFixed(2)}×</b></div>
+      <div><span>Täckning</span><b>${Math.round((ds.coverage ?? 0) * 100)}% · ${esc(mix)}</b></div>
+      <div><span>Medianinkomst</span><b>${fmtInt(s.median_income_ksek || 0)} tkr</b></div>
+      <div><span>Ägt boende</span><b>${Math.round((s.owner_share || 0) * 100)}%</b></div>
       <div><span>Kostnad</span><b>${fmtSEK(ds.cost_sek)}</b></div>
-      <div><span>Brutto</span><b>${fmtSEK(ds.gross_sek)}</b></div>
       <div><span>Netto</span><b class="uplift-${netClass}">${fmtSEK(ds.net_sek)}</b></div>
     </div>
     <div class="uplift-pop__reason">${esc(ds.reason)}</div>
@@ -248,8 +251,8 @@ function Header({ source }) {
       <div className="uplift-header__eyebrow">LedMig · kampanjoptimering</div>
       <h1 className="uplift-header__title">Uplift-modellering: Umeå</h1>
       <p className="uplift-header__sub">
-        Causal Forest skattar donationslyftet per stadsdel. OR-Tools fördelar broschyrerna mot budgeten
-        för maximal nettovinst.
+        42 RegSO-områden i Umeå med verklig SCB-demografi. Causal Forest skattar donationslyftet per område,
+        OR-Tools fördelar broschyrerna mot budgeten för maximal nettovinst.
       </p>
       <div className="uplift-source">
         <span className={`uplift-source__dot ${source === 'live' ? 'is-live' : ''}`} />
@@ -305,9 +308,9 @@ function Panel({
 
         <div className="uplift-divider" />
 
-        {/* Reglage: dra och se zonerna flytta sig i realtid. Budgeten är logaritmisk (100 kr till 600 tkr)
+        {/* Reglage: dra och se zonerna flytta sig i realtid. Budgeten är logaritmisk (100 kr till 4 Mkr)
             så låga budgetar går att finjustera: även små belopp täcker en del av det bästa området. */}
-        <Slider label="Total budget" value={budget} min={100} max={600000} scale="log"
+        <Slider label="Total budget" value={budget} min={100} max={4000000} scale="log"
           onChange={setBudget} fmt={fmtSEK} />
         <Slider label="Styckkostnad Standard" value={costStandard} min={1} max={40} step={0.5}
           onChange={setCostStandard} fmt={(v) => `${v.toFixed(1)} kr`} />
@@ -331,11 +334,13 @@ function Panel({
           <LegendItem accent={ZONE.none.accent} text="Avstår eller delvis täckt (dämpad zon)" />
         </div>
 
-        {/* Ärlighet om datan: var "donationsförmågan" kommer ifrån. */}
+        {/* Ärlighet om datan: var siffrorna kommer ifrån (verklig öppen SCB-data + en modellerad respons). */}
         <p className="uplift-note">
-          Donationsförmågan per stadsdel skattas av en Causal Forest utifrån illustrativa demografiska
-          arketyper (medelinkomst, ålder, andel fastighetsägare) och syntetisk träningsdata, inte verkliga
-          donationsregister eller exakt SCB-statistik. Beslutsstöd, inte facit.
+          {baseline.districts.length} RegSO-områden, hela Umeå kommun. Områdesgränser och demografi
+          (medianinkomst, ålder, andel ägt boende, hushåll) är verklig öppen SCB-data (RegSO 2025 + PxWeb,
+          CC0). Snittpris småhus i Umeå: {baseline.price_anchor ? fmtMkr(baseline.price_anchor.mean_house_price_sek) : '–'} ({baseline.price_anchor?.year || ''}, SCB).
+          Donationslyftet skattas av Causal Forest på den verkliga demografin via en syntetisk respons
+          (vi har inga verkliga donationsregister). Beslutsstöd, inte facit.
         </p>
       </div>
     </aside>

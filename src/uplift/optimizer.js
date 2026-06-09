@@ -1,59 +1,116 @@
 /**
- * Klientsidans spegel av OR-Tools-optimeraren i api_server/uplift.py (reference_allocation, som i sin tur
- * är byte-exakt lika med den auktoritativa pywraplp-MILP-lösaren solve_allocation).
+ * Klientsidans spegel av OR-Tools-optimeraren i api_server/uplift.py (reference_allocation, som ger samma
+ * optimum som den auktoritativa GLOP-LP-lösaren solve_allocation).
  *
- * Varför en spegel: de tunga ML-beroendena (econml + ortools) ligger MEDVETET utanför den slimmade
- * Cloud Run-imagen, så backend-endpointen svarar 503 i drift. För att sidan ska räkna om allokeringen
- * direkt när man drar i reglagen (utan nätverksrundtur) löser vi samma problem här.
+ * Varför en spegel: de tunga ML-beroendena (econml + ortools) ligger MEDVETET utanför den slimmade Cloud
+ * Run-imagen, så backend-endpointen svarar 503 i drift. För att sidan ska räkna om allokeringen direkt när
+ * man drar i reglagen (utan nätverksrundtur) löser vi samma problem här. Det måste SKALA till 42 RegSO-
+ * områden (en 3^N-uppräkning är omöjlig), så vi använder samma exakta O(N log N)-algoritm som backend.
  *
  * MODELL:
  *  - Effektiviteten per broschyrtyp HÄRLEDS ur dess styckkostnad via en responskurva med avtagande
- *    avkastning: resp(c) = M·(1 − e^(−c/τ)). En gratis broschyr övertygar ingen, en dyrare övertygar mer
- *    men varje extra krona ger mindre. Därför finns ett INRE optimalt pris: att sänka styckkostnaden gör
- *    inte automatiskt kampanjen mer lönsam.
- *  - FRAKTIONELL täckning: varje stadsdel kan täckas helt eller delvis (en andel av hushållen), högst en
- *    typ per stadsdel. Då gör även små budgetar något (en bråkdel av det bästa området).
- *
- * ALGORITM (exakt, speglar reference_allocation): uttömmande över de 3^7 valen av typ per stadsdel; för
- * varje fast tilldelning är stadsdelarna delbara poster med konstant netto/kostnad per hushåll, så optimal
- * täckning under budget ges av en fraktionell knapsack (girigt efter täthet = netto/kr). Bästa över alla
- * tilldelningar = globalt optimum. Samma flyttalsmatematik som Python -> identiska beslut och siffror.
+ *    avkastning: resp(c) = M·(1 − e^(−c/τ)). Standard har därför ALLTID högre täthet (netto/kr) än Premium.
+ *  - FRAKTIONELL täckning: varje område kan täckas helt eller delvis. Per område byggs ett KONKAVT
+ *    (cost, net)-hölje: (0,0) -[Standard]-> (full Standard) -[uppgradering]-> (full Premium). Konkaviteten
+ *    gör att en girig fyllning efter fallande täthet över ALLA områdens segment är exakt optimal (= LP:n).
  */
 
-export const TREATMENTS = ['none', 'standard', 'premium']
-
-// Responskurvans konstanter MÅSTE matcha api_server/uplift.py (RESPONSE_CEILING / RESPONSE_SCALE).
-const RESPONSE_CEILING = 2.2
-const RESPONSE_SCALE = 22.0
+export const RESPONSE_CEILING = 2.2   // MÅSTE matcha api_server/uplift.py
+export const RESPONSE_SCALE = 22.0
 
 export function response(cost) {
   if (cost <= 0) return 0
   return RESPONSE_CEILING * (1 - Math.exp(-cost / RESPONSE_SCALE))
 }
 
-/** Per stadsdel och typ: netto/hushåll, kostnad/hushåll, effektivitet. */
-function perHousehold(districts, uplift, econ) {
+const KIND_ORDER = { std: 0, upgrade: 1, prem: 2 }
+
+/**
+ * Lös den fördelningsoptimala kampanjen (exakt, skalar till många områden).
+ * @param districts [{key,name,households}] i SAMMA ordning som backendens DISTRICTS
+ * @param uplift    {key: kr/hushåll}
+ * @param econ      {budget, costStandard, costPremium}
+ * @returns samma form som backendens solution-payload (kpis + districts)
+ */
+export function optimize(districts, uplift, econ) {
   const multS = response(econ.costStandard)
   const multP = response(econ.costPremium)
-  const per = {}
+  const cS = econ.costStandard
+  const cP = econ.costPremium
+
+  const segments = []      // {density, cap, key, kind}
+  const meta = {}          // key -> reconstruction state
   for (const d of districts) {
-    // Robust mot trasig indata: ett icke-ändligt eller negativt lyft behandlas som 0.
     const raw = uplift[d.key]
-    const u = Number.isFinite(raw) && raw > 0 ? raw : 0
-    per[d.key] = {
-      standard: { net: u * multS - econ.costStandard, cost: econ.costStandard, mult: multS },
-      premium: { net: u * multP - econ.costPremium, cost: econ.costPremium, mult: multP },
+    const u = Number.isFinite(raw) && raw > 0 ? raw : 0   // robust mot trasig indata
+    const nS = u * multS - cS
+    const nP = u * multP - cP
+    const hh = d.households
+    const m = { hh, mode: null, std_cap: 0, std_take: 0, up_cap: 0, up_take: 0, prem_cap: 0, prem_take: 0 }
+    const stdOk = nS > 0 && cS > 0
+    const premOk = nP > 0 && cP > 0
+    if (stdOk) {
+      m.mode = 'std_base'
+      m.std_cap = cS * hh
+      segments.push({ density: nS / cS, cap: cS * hh, key: d.key, kind: 'std' })
+      if (premOk && nP > nS && cP > cS) {
+        m.up_cap = (cP - cS) * hh
+        segments.push({ density: (nP - nS) / (cP - cS), cap: (cP - cS) * hh, key: d.key, kind: 'upgrade' })
+      }
+    } else if (premOk) {
+      m.mode = 'prem_base'
+      m.prem_cap = cP * hh
+      segments.push({ density: nP / cP, cap: cP * hh, key: d.key, kind: 'prem' })
+    }
+    meta[d.key] = m
+  }
+
+  // Täthet fallande; tie-break: områdesnyckel (ASCII, samma ordning som Python), sedan segmenttyp.
+  segments.sort((a, b) =>
+    (b.density - a.density) ||
+    (a.key < b.key ? -1 : a.key > b.key ? 1 : 0) ||
+    (KIND_ORDER[a.kind] - KIND_ORDER[b.kind]),
+  )
+
+  let rem = econ.budget
+  for (const s of segments) {
+    if (rem <= 0) break
+    const take = s.cap <= rem ? s.cap : rem
+    rem -= take
+    const m = meta[s.key]
+    if (s.kind === 'std') m.std_take = take
+    else if (s.kind === 'upgrade') m.up_take = take
+    else m.prem_take = take
+  }
+
+  // Rekonstruera (täckning_standard, täckning_premium) per område.
+  const alloc = {}
+  for (const key in meta) {
+    const m = meta[key]
+    if (m.mode === 'std_base') {
+      const mu = m.std_cap > 0 ? m.std_take / m.std_cap : 0
+      const lam = m.up_cap > 0 ? m.up_take / m.up_cap : 0
+      alloc[key] = [Math.max(0, mu - lam), lam]
+    } else if (m.mode === 'prem_base') {
+      const nu = m.prem_cap > 0 ? m.prem_take / m.prem_cap : 0
+      alloc[key] = [0, nu]
+    } else {
+      alloc[key] = [0, 0]
     }
   }
-  return per
+  return buildResult(districts, uplift, econ, alloc, multS, multP)
 }
 
-function decisionReason(decision, coverage, bestNetFull) {
+function decisionReason(decision, coverage, bestNetFull, mixed) {
   const partial = coverage > 0 && coverage < 0.999
   let base
-  if (decision === 'premium') base = 'Premium: den dyrare broschyren maximerar nettovinsten här.'
-  else if (decision === 'standard') base = 'Standard: bäst nettovinst per krona här.'
-  else {
+  if (decision === 'premium') {
+    base = mixed
+      ? 'Premium: lönar sig att uppgradera en del av området från Standard till Premium.'
+      : 'Premium: den dyrare broschyren maximerar nettovinsten här.'
+  } else if (decision === 'standard') {
+    base = 'Standard: bäst nettovinst per krona här.'
+  } else {
     if (bestNetFull <= 0) return 'Avstår: ett utskick skulle gå med förlust (lyftet täcker inte kostnaden).'
     return 'Avstår: budgeten räcker till högre nettovinst i andra områden.'
   }
@@ -61,88 +118,47 @@ function decisionReason(decision, coverage, bestNetFull) {
   return base
 }
 
-/**
- * Lös den fördelningsoptimala kampanjen (exakt: uttömmande typval + fraktionell knapsack).
- * @param districts [{key,name,households}] i SAMMA ordning som backendens DISTRICTS
- * @param uplift    {key: kr/hushåll}
- * @param econ      {budget, costStandard, costPremium}
- * @returns samma form som backendens solution-payload (kpis + districts, med coverage/effectiveness)
- */
-export function optimize(districts, uplift, econ) {
-  const per = perHousehold(districts, uplift, econ)
-  const n = districts.length
-  let bestNet = null
-  let bestAlloc = null
-  const total = 3 ** n
-  for (let combo = 0; combo < total; combo++) {
-    const assign = new Array(n)
-    let c = combo
-    for (let i = 0; i < n; i++) { assign[i] = TREATMENTS[c % 3]; c = Math.floor(c / 3) }
-
-    const items = []   // [täthet, netto/hh, kostnad/hh, hushåll, index, typ]: bara positivt netto/hushåll
-    for (let i = 0; i < n; i++) {
-      const t = assign[i]
-      if (t === 'none') continue
-      const o = per[districts[i].key][t]
-      if (o.net > 0 && o.cost > 0) items.push([o.net / o.cost, o.net, o.cost, districts[i].households, i, t])
-    }
-    items.sort((a, b) => (b[0] - a[0]) || (a[4] - b[4]))   // täthet fallande, tie-break: stadsdelsindex
-
-    let rem = econ.budget
-    let net = 0
-    const alloc = {}
-    for (const d of districts) alloc[d.key] = ['none', 0]
-    for (const [, nph, cph, hh, i, t] of items) {
-      if (rem <= 0) break
-      const full = cph * hh
-      if (full <= rem) { net += nph * hh; rem -= full; alloc[districts[i].key] = [t, 1] }
-      else { const f = rem / full; net += nph * hh * f; alloc[districts[i].key] = [t, f]; rem = 0; break }
-    }
-    if (bestNet === null || net > bestNet + 1e-9) { bestNet = net; bestAlloc = alloc }   // tidigaste vinner vid lika
-  }
-  return buildResult(districts, uplift, econ, bestAlloc)
-}
-
-function buildResult(districts, uplift, econ, alloc) {
-  const per = perHousehold(districts, uplift, econ)
-  const multS = response(econ.costStandard)
-  const multP = response(econ.costPremium)
+function buildResult(districts, uplift, econ, alloc, multS, multP) {
   let totalNet = 0, totalCost = 0, totalGross = 0
   let unitsStandard = 0, unitsPremium = 0
   const out = districts.map((d) => {
-    let [t, cov] = alloc[d.key]
-    cov = Math.max(0, Math.min(1, cov))
+    let [covS, covP] = alloc[d.key]
+    covS = Math.max(0, Math.min(1, covS))
+    covP = Math.max(0, Math.min(1 - covS, covP))
     const hh = d.households
     const raw = uplift[d.key]
     const u = Number.isFinite(raw) && raw > 0 ? raw : 0
-    let mult = 0, cost = 0
-    if (t === 'standard') { mult = multS; cost = econ.costStandard }
-    else if (t === 'premium') { mult = multP; cost = econ.costPremium }
-    else { cov = 0 }
-    const covered = hh * cov
-    const gross = covered * u * mult
-    const spend = covered * cost
+    const stdHh = hh * covS
+    const premHh = hh * covP
+    const gross = stdHh * u * multS + premHh * u * multP
+    const spend = stdHh * econ.costStandard + premHh * econ.costPremium
     const net = gross - spend
-    const units = Math.round(covered)
-    const decision = cov > 1e-9 ? t : 'none'
-    const bestNetFull = Math.max(per[d.key].standard.net, per[d.key].premium.net)
+    const uStd = Math.round(stdHh)
+    const uPrem = Math.round(premHh)
+    const coverage = covS + covP
+    let decision
+    if (covP > covS) decision = 'premium'
+    else if (covS > 1e-9) decision = 'standard'
+    else decision = 'none'
+    const mixed = covS > 1e-9 && covP > 1e-9
+    const bestNetFull = Math.max(u * multS - econ.costStandard, u * multP - econ.costPremium)
     totalNet += net; totalCost += spend; totalGross += gross
-    if (decision === 'standard') unitsStandard += units
-    if (decision === 'premium') unitsPremium += units
+    unitsStandard += uStd; unitsPremium += uPrem
     return {
       key: d.key,
       name: d.name,
       households: hh,
       uplift_sek: round2(u),
       decision,
-      coverage: round4(cov),
-      effectiveness: round3(mult),
-      units,
+      coverage: round4(coverage),
+      units: uStd + uPrem,
+      units_standard: uStd,
+      units_premium: uPrem,
       cost_sek: round2(spend),
       gross_sek: round2(gross),
       net_sek: round2(net),
       roi: spend > 0 ? round3(net / spend) : null,
-      reason: decisionReason(decision, cov, bestNetFull),
+      reason: decisionReason(decision, coverage, bestNetFull, mixed),
     }
   })
 
@@ -150,7 +166,7 @@ function buildResult(districts, uplift, econ, alloc) {
   const householdsReached = unitsStandard + unitsPremium
   return {
     ok: true,
-    solver: 'klient (uttömmande + fraktionell knapsack, speglar OR-Tools)',
+    solver: 'klient (konkavt hölje, fraktionell knapsack, speglar OR-Tools)',
     kpis: {
       net_profit_sek: round2(totalNet),
       gross_donations_sek: round2(totalGross),

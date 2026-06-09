@@ -31,21 +31,16 @@ body {
 .uplift-zone--standard { animation: uplift-pulse 6.8s ease-in-out infinite; }
 .uplift-zone--none     { animation: none; opacity: 1; }
 
-/* Alltid-synlig etikett vid stadsdelens centrum. divIcon-rutan (130x36) ankras med sin mittpunkt på
-   koordinaten av Leaflet, så vi centrerar bara pillret inuti rutan med flex (ingen egen translate). */
-.uplift-zonelabel { background: none; border: none; display: flex; align-items: center; justify-content: center; }
-.uplift-zonelabel__inner {
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
-  padding: 3px 9px; border-radius: 999px;
-  background: rgba(10, 14, 26, 0.62); border: 1px solid rgba(231, 169, 139, 0.22);
-  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
-  font-size: 11.5px; font-weight: 700; color: #eef1fb;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+/* Hover-tooltip vid zon (42 områden -> namn visas vid hover i stället för alltid-synliga etiketter). */
+.leaflet-tooltip.uplift-tip {
+  background: rgba(10, 14, 26, 0.92); border: 1px solid rgba(231, 169, 139, 0.28); color: #eef1fb;
+  border-radius: 999px; padding: 4px 11px; font-size: 12px; font-weight: 700; white-space: nowrap;
+  -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  display: inline-flex; align-items: center; gap: 6px;
 }
-.uplift-zonelabel--none .uplift-zonelabel__inner { color: #9aa3bd; opacity: 0.85; }
-.uplift-zonelabel__dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
-.uplift-zonelabel__name { letter-spacing: 0.01em; }
-.uplift-zonelabel__cov { margin-left: 5px; padding: 0 5px; border-radius: 999px; font-size: 10px; font-weight: 800; color: #0A0E1A; background: #e7a98b; }
+.leaflet-tooltip.uplift-tip span { color: #a6b0cf; font-weight: 600; }
+.uplift-tip__dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px currentColor; flex: none; }
+.leaflet-tooltip.uplift-tip::before { display: none; }   /* dölj Leaflets pil för en ren pill */
 
 /* Leaflet-kontroller + popup i mörk, varm ton. */
 .leaflet-control-zoom { border: none !important; box-shadow: 0 4px 18px rgba(0,0,0,0.5) !important; }
