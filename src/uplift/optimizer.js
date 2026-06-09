@@ -65,7 +65,7 @@ function decisionReason(decision, coverage, bestNetFull) {
  * Lös den fördelningsoptimala kampanjen (exakt: uttömmande typval + fraktionell knapsack).
  * @param districts [{key,name,households}] i SAMMA ordning som backendens DISTRICTS
  * @param uplift    {key: kr/hushåll}
- * @param econ      {budget, costStandard, costPremium, rideCost}
+ * @param econ      {budget, costStandard, costPremium}
  * @returns samma form som backendens solution-payload (kpis + districts, med coverage/effectiveness)
  */
 export function optimize(districts, uplift, econ) {
@@ -146,7 +146,8 @@ function buildResult(districts, uplift, econ, alloc) {
     }
   })
 
-  const freeRides = econ.rideCost > 0 ? Math.floor(totalNet / econ.rideCost) : 0
+  const householdsTotal = districts.reduce((s, d) => s + d.households, 0)
+  const householdsReached = unitsStandard + unitsPremium
   return {
     ok: true,
     solver: 'klient (uttömmande + fraktionell knapsack, speglar OR-Tools)',
@@ -158,8 +159,10 @@ function buildResult(districts, uplift, econ, alloc) {
       budget_utilization: econ.budget > 0 ? round4(totalCost / econ.budget) : null,
       units_standard: unitsStandard,
       units_premium: unitsPremium,
-      units_total: unitsStandard + unitsPremium,
-      free_rides_funded: freeRides,
+      units_total: householdsReached,
+      households_total: householdsTotal,
+      households_reached: householdsReached,
+      reach: householdsTotal > 0 ? round4(householdsReached / householdsTotal) : 0,
       districts_premium: out.filter((p) => p.decision === 'premium').length,
       districts_standard: out.filter((p) => p.decision === 'standard').length,
       districts_partial: out.filter((p) => p.coverage > 0 && p.coverage < 0.999).length,

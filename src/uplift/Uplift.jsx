@@ -76,21 +76,13 @@ export default function Uplift() {
   const [budget, setBudget] = useState(d0.budget_sek)
   const [costStandard, setCostStandard] = useState(d0.cost_standard)
   const [costPremium, setCostPremium] = useState(d0.cost_premium)
-  const rideCost = baseline.ride_cost_sek
 
   const econ = useMemo(() => ({
-    budget, costStandard, costPremium, rideCost,
-  }), [budget, costStandard, costPremium, rideCost])
+    budget, costStandard, costPremium,
+  }), [budget, costStandard, costPremium])
 
   // Lös om allokeringen direkt när lyft eller reglage ändras (uttömmande sökning, < 1 ms).
   const solution = useMemo(() => optimize(districts, uplift, econ), [districts, uplift, econ])
-
-  // Referenslösning med obegränsad budget: ger taket för "gratis hemresor"-mätaren (hur nära maximal
-  // möjlig effekt vi är vid nuvarande kostnader). Beror på allt UTOM budgeten.
-  const reference = useMemo(
-    () => optimize(districts, uplift, { ...econ, budget: 1e12 }),
-    [districts, uplift, econ.costStandard, econ.costPremium, econ.rideCost], // eslint-disable-line react-hooks/exhaustive-deps
-  )
 
   // Friska upp lyftet från backend (om provisionerad). 503/timeout/offline -> behåll ögonblicksbilden.
   useEffect(() => {
@@ -111,7 +103,7 @@ export default function Uplift() {
       <MapCanvas districts={districts} city={city} solution={solution} />
       <Header source={source} />
       <Panel
-        solution={solution} reference={reference} rideCost={rideCost}
+        solution={solution}
         budget={budget} setBudget={setBudget}
         costStandard={costStandard} setCostStandard={setCostStandard}
         costPremium={costPremium} setCostPremium={setCostPremium}
@@ -271,11 +263,10 @@ function Header({ source }) {
 
 /* ───────────────────────── Glaspanel (KPI:er + reglage) ───────────────────────── */
 function Panel({
-  solution, reference, rideCost, budget, setBudget, costStandard, setCostStandard,
+  solution, budget, setBudget, costStandard, setCostStandard,
   costPremium, setCostPremium, onReset,
 }) {
   const k = solution.kpis
-  const maxRides = Math.max(1, reference.kpis.free_rides_funded)
   const effS = response(costStandard)
   const effP = response(costPremium)
   return (
@@ -290,8 +281,8 @@ function Panel({
           </div>
         </div>
 
-        {/* Gratis hemresor: nettovinsten översatt till finansierade trygghetsresor */}
-        <RidesGauge rides={k.free_rides_funded} max={maxRides} rideCost={rideCost} />
+        {/* Räckvidd: andel av Umeås målhushåll som kampanjen faktiskt når inom budget */}
+        <ReachGauge reach={k.reach} reached={k.households_reached} total={k.households_total} />
 
         {/* Utskick per kategori + avstådda områden */}
         <div className="uplift-stats">
@@ -339,6 +330,13 @@ function Panel({
           <LegendItem accent={ZONE.standard.accent} text="Standard-broschyr (mjuk rosa)" />
           <LegendItem accent={ZONE.none.accent} text="Avstår eller delvis täckt (dämpad zon)" />
         </div>
+
+        {/* Ärlighet om datan: var "donationsförmågan" kommer ifrån. */}
+        <p className="uplift-note">
+          Donationsförmågan per stadsdel skattas av en Causal Forest utifrån illustrativa demografiska
+          arketyper (medelinkomst, ålder, andel fastighetsägare) och syntetisk träningsdata, inte verkliga
+          donationsregister eller exakt SCB-statistik. Beslutsstöd, inte facit.
+        </p>
       </div>
     </aside>
   )
@@ -407,11 +405,11 @@ function Slider({ label, value, min, max, step, onChange, fmt, scale }) {
   )
 }
 
-/* Radiell mätare: hur många gratis hemresor kampanjens netto finansierar (relativt taket vid obegränsad budget). */
-function RidesGauge({ rides, max, rideCost }) {
+/* Radiell mätare: andel av Umeås målhushåll som kampanjen faktiskt når inom budgeten. */
+function ReachGauge({ reach, reached, total }) {
   const R = 52
   const C = 2 * Math.PI * R
-  const frac = Math.max(0, Math.min(1, rides / max))
+  const frac = Math.max(0, Math.min(1, reach || 0))
   return (
     <div className="uplift-gauge">
       <svg viewBox="0 0 140 140" className="uplift-gauge__svg" aria-hidden="true">
@@ -429,10 +427,10 @@ function RidesGauge({ rides, max, rideCost }) {
         />
       </svg>
       <div className="uplift-gauge__center">
-        <div className="uplift-gauge__num">{fmtInt(rides)}</div>
-        <div className="uplift-gauge__cap">gratis hemresor</div>
+        <div className="uplift-gauge__num">{Math.round(frac * 100)}%</div>
+        <div className="uplift-gauge__cap">av målhushållen</div>
       </div>
-      <div className="uplift-gauge__foot">finansierade ({fmtSEK(rideCost)}/resa)</div>
+      <div className="uplift-gauge__foot">{fmtInt(reached)} av {fmtInt(total)} hushåll nås</div>
     </div>
   )
 }
