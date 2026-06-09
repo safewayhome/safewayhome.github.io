@@ -66,6 +66,10 @@ const fmtMkr = (x) => `${(x / 1e6).toLocaleString('sv-SE', { maximumFractionDigi
 // Statiska (verkliga SCB-)fält per område, för kartans popup: medianinkomst, andel ägt boende, RegSO-kod.
 const STATIC = Object.fromEntries(baseline.districts.map((d) => [d.key, d]))
 
+// Standard-budget som visas direkt när sidan öppnas (och vid Återställ): 1000 kr. Reglaget når
+// fortfarande 100 kr–4 Mkr; KPI:erna räknas om live från reglaget, så panelen speglar alltid detta värde.
+const DEFAULT_BUDGET_SEK = 1000
+
 export default function Uplift() {
   // Stadsdelarna (geometri + demografi) kommer från den bakade ögonblicksbilden; lyftet kan friskas upp
   // från backend om den råkar ha ML-lagret installerat (annars behåller vi ögonblicksbilden, tyst).
@@ -77,7 +81,7 @@ export default function Uplift() {
   // Slider-styrd kampanjekonomi (initieras från modellens defaultvärden). Effektiviteten per typ härleds
   // ur styckkostnaden via responskurvan (samma som backend), så det finns ingen separat multiplikator.
   const d0 = baseline.defaults
-  const [budget, setBudget] = useState(d0.budget_sek)
+  const [budget, setBudget] = useState(DEFAULT_BUDGET_SEK)
   const [costStandard, setCostStandard] = useState(d0.cost_standard)
   const [costPremium, setCostPremium] = useState(d0.cost_premium)
 
@@ -112,7 +116,7 @@ export default function Uplift() {
         costStandard={costStandard} setCostStandard={setCostStandard}
         costPremium={costPremium} setCostPremium={setCostPremium}
         onReset={() => {
-          setBudget(d0.budget_sek); setCostStandard(d0.cost_standard); setCostPremium(d0.cost_premium)
+          setBudget(DEFAULT_BUDGET_SEK); setCostStandard(d0.cost_standard); setCostPremium(d0.cost_premium)
         }}
       />
     </div>
