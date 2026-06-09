@@ -19,7 +19,12 @@ body {
 
 /* ── Karta ─────────────────────────────────────────────────────────────── */
 .uplift-map { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
-.uplift-map.leaflet-container, .leaflet-container { background: #0A0E1A; font-family: inherit; outline: none; }
+.uplift-map.leaflet-container, .leaflet-container { background: #0A0E1A; font-family: inherit; }
+/* Synlig tangentbordsfokus (WCAG 2.4.7): Leaflet gör kartcontainern fokuserbar (tabIndex 0). Ringen
+   hålls innanför helskärmscontainern med negativ offset så den inte klipps av viewporten. Zonerna
+   (uplift-zone) görs fokuserbara i Uplift.jsx och får samma varma ring som reset-knappen. */
+.leaflet-container:focus-visible { outline: 3px solid #f2c879; outline-offset: -3px; }
+.uplift-zone:focus-visible { outline: 2px solid #f2c879; outline-offset: 2px; }
 
 /* Glödande zoner: mjuk färgad fyllning + glöd (CSS-filter sätts inline på SVG-pathen per beslut) och en
    subtil pulsering. fill-opacity sätts inline efter TÄCKNINGSGRAD (delvis täckta zoner lyser svagare), så
@@ -52,7 +57,7 @@ body {
 .leaflet-bar a:first-child { border-radius: 10px 10px 0 0; }
 .leaflet-bar a:last-child { border-radius: 0 0 10px 10px; }
 .leaflet-control-attribution {
-  background: rgba(10, 14, 26, 0.66) !important; color: #6b7390 !important;
+  background: rgba(10, 14, 26, 0.66) !important; color: #8b93b3 !important;
   font-size: 10.5px; padding: 2px 7px; border-radius: 8px 0 0 0;
 }
 .leaflet-control-attribution a { color: #a6b0cf !important; }
@@ -106,6 +111,9 @@ body {
   overflow: hidden;
 }
 .uplift-panel__scroll { max-height: calc(100vh - clamp(28px, 6vw, 52px)); overflow-y: auto; padding: 20px 20px 22px; }
+
+/* Botten-ark-handtag: bara på mobil (se @media nedan), dolt på desktop. */
+.uplift-sheet-handle { display: none; }
 
 .uplift-net { text-align: left; }
 .uplift-net__label { font-size: 11px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #737d9e; }
@@ -199,17 +207,41 @@ body {
 .uplift-panel__scroll::-webkit-scrollbar-track { background: transparent; }
 
 /* ── Responsivt: på smala skärmar blir panelen ett ark i underkant ──────── */
-@media (max-width: 760px) {
+/* På smala skärmar (<900px, projektets standardbrytpunkt) blir glaspanelen ett COLLAPSBART botten-ark.
+   Kollapsat (default) syns bara peek-handtaget + nettovinsten så KARTAN är fri; tryck på handtaget för
+   att fälla upp hela panelen. Allt med CSS/inline-stilar (ingen Tailwind). */
+@media (max-width: 900px) {
   .uplift-header { max-width: calc(100vw - 28px); }
   .uplift-header__sub { display: none; }
   .uplift-panel {
     top: auto; bottom: 0; left: 0; right: 0; width: 100%;
-    max-height: 56vh; border-radius: 22px 22px 0 0; border-bottom: none;
+    max-height: 82vh; border-radius: 22px 22px 0 0; border-bottom: none;
+    display: flex; flex-direction: column;
+    transition: transform .38s cubic-bezier(.2, .7, .2, 1);
   }
-  .uplift-panel__scroll { max-height: 56vh; padding: 16px 16px 20px; }
-  /* Lyft Leaflets nedre kontroller (zoom + attribution) OVANFÖR bottenarket: CARTO/OSM-attributionen
-     ska alltid synas (licenskrav), och zoomknapparna ska gå att nå. */
-  .leaflet-bottom { bottom: 57vh; }
+  /* Kollapsat: skjut ner panelen så bara peek-handtaget (~128px) syns: kartan är fri ovanför. */
+  .uplift-panel:not(.is-open) { transform: translateY(calc(100% - 128px)); }
+  .uplift-panel.is-open { transform: translateY(0); }
+  .uplift-panel__scroll { max-height: none; flex: 1 1 auto; padding: 2px 16px 20px; }
+
+  .uplift-sheet-handle {
+    display: flex; align-items: flex-start; gap: 12px; flex: none; position: relative;
+    width: 100%; padding: 15px 18px 12px; background: transparent; border: none; cursor: pointer;
+    color: inherit; font-family: inherit; -webkit-tap-highlight-color: transparent;
+  }
+  .uplift-sheet-handle:focus-visible { outline: 2px solid #f2c879; outline-offset: -3px; border-radius: 22px 22px 0 0; }
+  .uplift-sheet-grip {
+    position: absolute; top: 7px; left: 50%; transform: translateX(-50%);
+    width: 40px; height: 4px; border-radius: 999px; background: rgba(231, 169, 139, 0.45);
+  }
+  .uplift-sheet-peek { display: flex; flex-direction: column; align-items: flex-start; text-align: left; flex: 1; min-width: 0; }
+  .uplift-sheet-peek__label { font-size: 10px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #737d9e; }
+  .uplift-sheet-peek__val { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 21px; line-height: 1.1; color: #f2c879; font-variant-numeric: tabular-nums; }
+  .uplift-sheet-chevron { flex: none; margin-top: 4px; color: #e7a98b; transition: transform .38s cubic-bezier(.2, .7, .2, 1); }
+  .uplift-panel.is-open .uplift-sheet-chevron { transform: rotate(180deg); }
+
+  /* Lyft Leaflets nedre kontroller (zoom + CARTO/OSM-attribution, licenskrav) ovanför peek-handtaget. */
+  .leaflet-bottom { bottom: 132px; transition: bottom .38s; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -324,7 +324,8 @@ function InterviewForm() {
 
         <Field label="Din berättelse eller fråga">
           <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} maxLength={4000}
-            aria-required="true" placeholder="Berätta så mycket eller lite du vill. Vad gör dig otrygg i vardagen? Vad skulle hjälpa?"
+            aria-required="true" aria-invalid={!!err} aria-describedby={err ? 'ideel-form-err' : undefined}
+            placeholder="Berätta så mycket eller lite du vill. Vad gör dig otrygg i vardagen? Vad skulle hjälpa?"
             style={{ ...inp, resize: 'vertical', minHeight: 116 }} />
         </Field>
 
@@ -337,7 +338,7 @@ function InterviewForm() {
           </span>
         </label>
 
-        {err && <div role="alert" style={{ fontSize: 13, color: '#c2354f', marginTop: 6 }}>{err}</div>}
+        {err && <div id="ideel-form-err" role="alert" style={{ fontSize: 13, color: '#c2354f', marginTop: 6 }}>{err}</div>}
 
         <button type="submit" disabled={state === 'sending'} className="ideel-btn ideel-btn--primary" style={{ width: '100%', marginTop: 18 }}>
           {state === 'sending' ? 'Skickar…' : 'Skicka in'}
@@ -407,7 +408,7 @@ const lead = { fontSize: 'clamp(15px, 2.2vw, 17px)', color: D.inkSoft, lineHeigh
 const inp = {
   width: '100%', padding: '13px 15px', borderRadius: 14, fontSize: 15, color: D.ink,
   fontFamily: "'Nunito', system-ui, sans-serif",
-  background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(176,106,72,0.35)', outline: 'none',
+  background: 'rgba(255,255,255,0.6)', border: '1px solid #95502f', outline: 'none',
 }
 
 // Liten, handritad swash-flourish (SVG, inget emoji): en mjuk våg i guld -> ros som knyter an till Leden.

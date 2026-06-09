@@ -53,7 +53,7 @@ const ZONE = {
     accent: '#f4a8c8',
   },
   none: {
-    label: 'Avstår', fill: '#33405e', stroke: '#566489', fillOp: 0.16, strokeOp: 0.5, weight: 1.0,
+    label: 'Avstår', fill: '#33405e', stroke: '#8893b5', fillOp: 0.16, strokeOp: 1.0, weight: 1.0,
     glow: 'drop-shadow(0 0 3px rgba(70,84,128,0.35))',
     accent: '#737d9e',
   },
@@ -150,6 +150,21 @@ function MapCanvas({ districts, city, solution }) {
       }).addTo(map)
       poly.bindTooltip('', { className: 'uplift-tip', sticky: true, direction: 'top', opacity: 1 })
       poly.bindPopup('', { className: 'uplift-popup', maxWidth: 300, closeButton: true })
+      // Tangentbordstillgänglighet (WCAG 2.1.1 + 1.4.13): Leaflet gör inte vektorzoner fokuserbara, så
+      // vi exponerar SVG-pathen som en knapp. Fokus visar tooltipen (namn), Enter/Space öppnar popupen
+      // med full info, Esc stänger. _path finns efter .addTo(map).
+      const p = poly._path
+      if (p) {
+        p.setAttribute('tabindex', '0')
+        p.setAttribute('role', 'button')
+        p.setAttribute('aria-label', d.name)
+        p.addEventListener('focus', () => poly.openTooltip())
+        p.addEventListener('blur', () => poly.closeTooltip())
+        p.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); poly.openPopup() }
+          else if (e.key === 'Escape') { poly.closePopup(); poly.closeTooltip() }
+        })
+      }
       zonesRef.current[d.key] = { poly }
     })
 
@@ -182,6 +197,10 @@ function MapCanvas({ districts, city, solution }) {
         path.classList.add('uplift-zone')
         path.classList.remove('uplift-zone--premium', 'uplift-zone--standard', 'uplift-zone--none')
         path.classList.add(`uplift-zone--${ds.decision}`)
+        // Håll det tillgängliga namnet i takt med beslutet (zonen läses som knapp av skärmläsare).
+        path.setAttribute('aria-label', ds.decision === 'none'
+          ? `${ds.name}: avstår`
+          : `${ds.name}: ${decLabel(ds.decision)}, täckning ${Math.round((ds.coverage ?? 0) * 100)}%`)
       }
       ref.poly.setTooltipContent(tooltipHtml(ds))
       ref.poly.setPopupContent(popupHtml(ds))
@@ -212,7 +231,7 @@ function popupHtml(ds) {
   return `<div class="uplift-pop">
     <div class="uplift-pop__head">
       <b>${esc(ds.name)}</b>
-      <span class="uplift-chip" style="color:${z.accent};border-color:${z.accent}55;background:${z.accent}1a">${z.label}</span>
+      <span class="uplift-chip" style="color:${ds.decision === 'none' ? '#9aa3c0' : z.accent};border-color:${z.accent}55;background:${z.accent}1a">${z.label}</span>
     </div>
     <div class="uplift-pop__grid">
       <div><span>Lyft</span><b>${ds.uplift_sek.toFixed(1)} kr/hushåll</b></div>
@@ -272,8 +291,23 @@ function Panel({
   const k = solution.kpis
   const effS = response(costStandard)
   const effP = response(costPremium)
+  // Mobil (<900px): panelen är ett collapsbart botten-ark. `open` styr om hela panelen är uppfälld;
+  // kollapsat syns bara handtaget + nettovinst-peeken så kartan är fri. På desktop döljs handtaget (CSS)
+  // och panelen ligger alltid fullt synlig uppe till höger.
+  const [open, setOpen] = useState(false)
   return (
-    <aside className="uplift-panel">
+    <aside className={`uplift-panel${open ? ' is-open' : ''}`}>
+      <button type="button" className="uplift-sheet-handle" onClick={() => setOpen((o) => !o)}
+        aria-expanded={open} aria-label={open ? 'Fäll ihop panelen' : 'Visa hela panelen'}>
+        <span className="uplift-sheet-grip" aria-hidden="true" />
+        <span className="uplift-sheet-peek">
+          <span className="uplift-sheet-peek__label">Nettovinst</span>
+          <span className="uplift-sheet-peek__val">{fmtSEK(k.net_profit_sek)}</span>
+        </span>
+        <svg className="uplift-sheet-chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
       <div className="uplift-panel__scroll">
         {/* Nettovinst: kampanjens hela poäng */}
         <div className="uplift-net">

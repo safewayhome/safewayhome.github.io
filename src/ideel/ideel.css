@@ -26,11 +26,11 @@ a { color: inherit; }
    mjuk roseguld box-shadow-ring (påverkas inte av inline-stilen) för inputs/textarea, och outline för
    knappar/länkar. Tonen är varm, inte hård, för att passa den ombonade, ljusa känslan. */
 input:focus-visible, textarea:focus-visible {
-  border-color: #e6b59a;
-  box-shadow: 0 0 0 3px rgba(230, 181, 154, 0.40);
+  border-color: #95502f;
+  box-shadow: 0 0 0 3px rgba(149, 80, 47, 0.75);
 }
 button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible {
-  outline: 2px solid #e6b59a;
+  outline: 2px solid #95502f;
   outline-offset: 3px;
 }
 
