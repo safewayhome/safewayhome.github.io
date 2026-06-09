@@ -22,13 +22,14 @@ body {
 .uplift-map.leaflet-container, .leaflet-container { background: #0A0E1A; font-family: inherit; outline: none; }
 
 /* Glödande zoner: mjuk färgad fyllning + glöd (CSS-filter sätts inline på SVG-pathen per beslut) och en
-   subtil pulsering. transition ger en mjuk omfärgning när ett beslut ändras. */
+   subtil pulsering. fill-opacity sätts inline efter TÄCKNINGSGRAD (delvis täckta zoner lyser svagare), så
+   pulsen animerar HELA pathens opacity i stället för fill-opacity (annars skulle pulsen skriva över
+   täckningsdämpningen). transition ger en mjuk omfärgning när ett beslut ändras. */
 .uplift-zone { transition: fill .5s ease, stroke .5s ease, fill-opacity .5s ease, stroke-opacity .5s ease; }
-@keyframes uplift-pulse-gold { 0%, 100% { fill-opacity: .40; } 50% { fill-opacity: .54; } }
-@keyframes uplift-pulse-pink { 0%, 100% { fill-opacity: .34; } 50% { fill-opacity: .50; } }
-.uplift-zone--premium  { animation: uplift-pulse-gold 5.5s ease-in-out infinite; }
-.uplift-zone--standard { animation: uplift-pulse-pink 6.8s ease-in-out infinite; }
-.uplift-zone--none     { animation: none; }
+@keyframes uplift-pulse { 0%, 100% { opacity: .9; } 50% { opacity: 1; } }
+.uplift-zone--premium  { animation: uplift-pulse 5.5s ease-in-out infinite; }
+.uplift-zone--standard { animation: uplift-pulse 6.8s ease-in-out infinite; }
+.uplift-zone--none     { animation: none; opacity: 1; }
 
 /* Alltid-synlig etikett vid stadsdelens centrum. divIcon-rutan (130x36) ankras med sin mittpunkt på
    koordinaten av Leaflet, så vi centrerar bara pillret inuti rutan med flex (ingen egen translate). */
@@ -44,6 +45,7 @@ body {
 .uplift-zonelabel--none .uplift-zonelabel__inner { color: #9aa3bd; opacity: 0.85; }
 .uplift-zonelabel__dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 .uplift-zonelabel__name { letter-spacing: 0.01em; }
+.uplift-zonelabel__cov { margin-left: 5px; padding: 0 5px; border-radius: 999px; font-size: 10px; font-weight: 800; color: #0A0E1A; background: #e7a98b; }
 
 /* Leaflet-kontroller + popup i mörk, varm ton. */
 .leaflet-control-zoom { border: none !important; box-shadow: 0 4px 18px rgba(0,0,0,0.5) !important; }
@@ -170,6 +172,14 @@ body {
 }
 .uplift-slider input[type="range"]::-moz-range-track { height: 6px; border-radius: 999px; background: transparent; }
 .uplift-slider input[type="range"]:focus-visible { box-shadow: 0 0 0 3px rgba(231, 169, 139, 0.35); }
+
+/* Effektivitetsavläsning: gör kopplingen kostnad -> effektivitet (responskurvan) synlig. */
+.uplift-eff { margin: 2px 0 16px; padding: 12px 13px; border-radius: 13px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(231, 169, 139, 0.16); }
+.uplift-eff__row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: #c6cce0; margin-bottom: 5px; }
+.uplift-eff__row span { display: inline-flex; align-items: center; gap: 7px; }
+.uplift-eff__row i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 7px currentColor; }
+.uplift-eff__row b { font-family: 'Sora', sans-serif; font-weight: 700; color: #f2c879; font-variant-numeric: tabular-nums; }
+.uplift-eff__hint { margin-top: 7px; font-size: 11px; line-height: 1.45; color: #737d9e; }
 
 .uplift-reset {
   width: 100%; margin-top: 2px; padding: 11px; border-radius: 12px; cursor: pointer;

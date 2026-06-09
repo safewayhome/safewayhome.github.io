@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import baseline from './baseline.json'
-import { optimize } from './optimizer'
+import { optimize, response } from './optimizer'
 
 /* ───────────────────────── Uplift-modellering: /UpliftModeling ─────────────────────────
    En datadriven optimeringsmodul för våra fysiska kampanjer (broschyrutskick) över Umeå. Modellen i
@@ -70,18 +70,17 @@ export default function Uplift() {
   const [uplift, setUplift] = useState(() => ({ ...baseline.uplift }))
   const [source, setSource] = useState('snapshot')   // 'snapshot' | 'live'
 
-  // Slider-styrd kampanjekonomi (initieras från modellens defaultvärden).
+  // Slider-styrd kampanjekonomi (initieras från modellens defaultvärden). Effektiviteten per typ härleds
+  // ur styckkostnaden via responskurvan (samma som backend), så det finns ingen separat multiplikator.
   const d0 = baseline.defaults
   const [budget, setBudget] = useState(d0.budget_sek)
   const [costStandard, setCostStandard] = useState(d0.cost_standard)
   const [costPremium, setCostPremium] = useState(d0.cost_premium)
-  const [multPremium, setMultPremium] = useState(d0.mult_premium)
   const rideCost = baseline.ride_cost_sek
 
   const econ = useMemo(() => ({
-    budget, costStandard, costPremium,
-    multStandard: d0.mult_standard, multPremium, rideCost,
-  }), [budget, costStandard, costPremium, multPremium, d0.mult_standard, rideCost])
+    budget, costStandard, costPremium, rideCost,
+  }), [budget, costStandard, costPremium, rideCost])
 
   // Lös om allokeringen direkt när lyft eller reglage ändras (uttömmande sökning, < 1 ms).
   const solution = useMemo(() => optimize(districts, uplift, econ), [districts, uplift, econ])
@@ -90,7 +89,7 @@ export default function Uplift() {
   // möjlig effekt vi är vid nuvarande kostnader). Beror på allt UTOM budgeten.
   const reference = useMemo(
     () => optimize(districts, uplift, { ...econ, budget: 1e12 }),
-    [districts, uplift, econ.costStandard, econ.costPremium, econ.multStandard, econ.multPremium, econ.rideCost], // eslint-disable-line react-hooks/exhaustive-deps
+    [districts, uplift, econ.costStandard, econ.costPremium, econ.rideCost], // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   // Friska upp lyftet från backend (om provisionerad). 503/timeout/offline -> behåll ögonblicksbilden.
@@ -116,10 +115,8 @@ export default function Uplift() {
         budget={budget} setBudget={setBudget}
         costStandard={costStandard} setCostStandard={setCostStandard}
         costPremium={costPremium} setCostPremium={setCostPremium}
-        multPremium={multPremium} setMultPremium={setMultPremium}
         onReset={() => {
-          setBudget(d0.budget_sek); setCostStandard(d0.cost_standard)
-          setCostPremium(d0.cost_premium); setMultPremium(d0.mult_premium)
+          setBudget(d0.budget_sek); setCostStandard(d0.cost_standard); setCostPremium(d0.cost_premium)
         }}
       />
     </div>
@@ -175,21 +172,25 @@ function MapCanvas({ districts, city, solution }) {
       const ref = zonesRef.current[ds.key]
       if (!ref) return
       const z = ZONE[ds.decision] || ZONE.none
+      // Delvis täckta zoner lyser svagare: fyllning + glöd skalas med täckningsandelen (0.4-1.0), så att
+      // en stadsdel som bara delvis nås syns dämpad. Avstådda (none) behåller sin egen mörka baston.
+      const cov = ds.decision === 'none' ? 0 : (ds.coverage ?? 1)
+      const k = ds.decision === 'none' ? 1 : 0.4 + 0.6 * cov
       ref.poly.setStyle({
-        fillColor: z.fill, color: z.stroke, fillOpacity: z.fillOp, weight: z.weight, opacity: z.strokeOp,
+        fillColor: z.fill, color: z.stroke, fillOpacity: z.fillOp * k, weight: z.weight, opacity: z.strokeOp,
       })
       // Glöd + puls-klass per beslut ligger som CSS-filter direkt på SVG-pathen. Vi TOGGLAR bara
       // besluts-klassen via classList (rör inte Leaflets egen 'leaflet-interactive', som krävs för klick).
       const path = ref.poly._path
       if (path) {
-        path.style.filter = z.glow
+        path.style.filter = ds.decision === 'none' ? z.glow : scaleGlow(z, k)
         path.classList.add('uplift-zone')
         path.classList.remove('uplift-zone--premium', 'uplift-zone--standard', 'uplift-zone--none')
         path.classList.add(`uplift-zone--${ds.decision}`)
       }
       ref.poly.setPopupContent(popupHtml(ds))
       ref.label.setIcon(L.divIcon({
-        className: 'uplift-zonelabel', iconSize: [130, 36], html: labelHtml(ds),
+        className: 'uplift-zonelabel', iconSize: [150, 36], html: labelHtml(ds),
       }))
     })
   }, [solution])
@@ -197,12 +198,15 @@ function MapCanvas({ districts, city, solution }) {
   return <div ref={elRef} className="uplift-map" aria-label="Karta över Umeå med modellens kampanjzoner" />
 }
 
-// Liten alltid-synlig etikett vid stadsdelens centrum.
+// Liten alltid-synlig etikett vid stadsdelens centrum. Delvis täckta zoner visar täckningsgraden.
 function labelHtml(ds) {
   const z = ZONE[ds.decision] || ZONE.none
+  const pct = Math.round((ds.coverage ?? 0) * 100)
+  const partial = ds.decision !== 'none' && pct < 100
+  const cov = partial ? `<span class="uplift-zonelabel__cov">${pct}%</span>` : ''
   return `<div class="uplift-zonelabel__inner uplift-zonelabel--${ds.decision}">
     <span class="uplift-zonelabel__dot" style="background:${z.accent}"></span>
-    <span class="uplift-zonelabel__name">${esc(ds.name)}</span>
+    <span class="uplift-zonelabel__name">${esc(ds.name)}</span>${cov}
   </div>`
 }
 
@@ -217,8 +221,8 @@ function popupHtml(ds) {
     </div>
     <div class="uplift-pop__grid">
       <div><span>Lyft</span><b>${ds.uplift_sek.toFixed(1)} kr/hushåll</b></div>
-      <div><span>Hushåll</span><b>${fmtInt(ds.households)}</b></div>
-      <div><span>Utskick</span><b>${fmtInt(ds.units)}</b></div>
+      <div><span>Täckning</span><b>${Math.round((ds.coverage ?? 0) * 100)}% · ${fmtInt(ds.units)} st</b></div>
+      <div><span>Effektivitet</span><b>${(ds.effectiveness ?? 0).toFixed(2)}×</b></div>
       <div><span>Kostnad</span><b>${fmtSEK(ds.cost_sek)}</b></div>
       <div><span>Brutto</span><b>${fmtSEK(ds.gross_sek)}</b></div>
       <div><span>Netto</span><b class="uplift-${netClass}">${fmtSEK(ds.net_sek)}</b></div>
@@ -230,6 +234,20 @@ function popupHtml(ds) {
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ))
+
+// #rrggbb + alpha -> rgba(): låter glöden färgas i zonens accent med variabel genomskinlighet.
+function hexA(hex, a) {
+  const h = hex.replace('#', '')
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r},${g},${b},${a})`
+}
+
+// Glödens styrka (radie + opacitet) följer täckningsfaktorn k: dämpad vid delvis täckning, full vid 100 %.
+function scaleGlow(z, k) {
+  const b1 = Math.round(9 * (0.6 + 0.4 * k))
+  const b2 = Math.round(24 * (0.6 + 0.4 * k))
+  return `drop-shadow(0 0 ${b1}px ${hexA(z.accent, (0.9 * k).toFixed(2))}) drop-shadow(0 0 ${b2}px ${hexA(z.accent, (0.55 * k).toFixed(2))})`
+}
 
 /* ───────────────────────── Rubrik (uppe till vänster) ───────────────────────── */
 function Header({ source }) {
@@ -254,10 +272,12 @@ function Header({ source }) {
 /* ───────────────────────── Glaspanel (KPI:er + reglage) ───────────────────────── */
 function Panel({
   solution, reference, rideCost, budget, setBudget, costStandard, setCostStandard,
-  costPremium, setCostPremium, multPremium, setMultPremium, onReset,
+  costPremium, setCostPremium, onReset,
 }) {
   const k = solution.kpis
   const maxRides = Math.max(1, reference.kpis.free_rides_funded)
+  const effS = response(costStandard)
+  const effP = response(costPremium)
   return (
     <aside className="uplift-panel">
       <div className="uplift-panel__scroll">
@@ -294,15 +314,22 @@ function Panel({
 
         <div className="uplift-divider" />
 
-        {/* Reglage: dra och se zonerna flytta sig i realtid */}
-        <Slider label="Total budget" value={budget} min={0} max={600000} step={10000}
+        {/* Reglage: dra och se zonerna flytta sig i realtid. Budgeten är logaritmisk (100 kr till 600 tkr)
+            så låga budgetar går att finjustera: även små belopp täcker en del av det bästa området. */}
+        <Slider label="Total budget" value={budget} min={100} max={600000} scale="log"
           onChange={setBudget} fmt={fmtSEK} />
-        <Slider label="Styckkostnad Standard" value={costStandard} min={1} max={30} step={0.5}
+        <Slider label="Styckkostnad Standard" value={costStandard} min={1} max={40} step={0.5}
           onChange={setCostStandard} fmt={(v) => `${v.toFixed(1)} kr`} />
-        <Slider label="Styckkostnad Premium" value={costPremium} min={10} max={120} step={1}
+        <Slider label="Styckkostnad Premium" value={costPremium} min={10} max={150} step={1}
           onChange={setCostPremium} fmt={(v) => `${Math.round(v)} kr`} />
-        <Slider label="Premium: övertalningsgrad" value={multPremium} min={1} max={3} step={0.1}
-          onChange={setMultPremium} fmt={(v) => `${v.toFixed(1)}×`} />
+
+        {/* Effektivitet följer styckkostnaden (avtagande avkastning): att sänka priset ger inte
+            automatiskt mer vinst, för en billigare broschyr övertygar färre. */}
+        <div className="uplift-eff">
+          <div className="uplift-eff__row"><span><i style={{ background: ZONE.standard.accent }} />Effekt Standard</span><b>{effS.toFixed(2)}×</b></div>
+          <div className="uplift-eff__row"><span><i style={{ background: ZONE.premium.accent }} />Effekt Premium</span><b>{effP.toFixed(2)}×</b></div>
+          <div className="uplift-eff__hint">Andel av lyftet som utskicket löser ut. Dyrare broschyr övertygar mer, men varje krona ger mindre: det finns ett optimalt pris.</div>
+        </div>
 
         <button type="button" className="uplift-reset" onClick={onReset}>Återställ förutsättningar</button>
 
@@ -310,7 +337,7 @@ function Panel({
         <div className="uplift-legend">
           <LegendItem accent={ZONE.premium.accent} text="Premium-broschyr (guld/roseguld)" />
           <LegendItem accent={ZONE.standard.accent} text="Standard-broschyr (mjuk rosa)" />
-          <LegendItem accent={ZONE.none.accent} text="Modellen avstår (mörk zon)" />
+          <LegendItem accent={ZONE.none.accent} text="Avstår eller delvis täckt (dämpad zon)" />
         </div>
       </div>
     </aside>
@@ -335,7 +362,34 @@ function LegendItem({ accent, text }) {
   )
 }
 
-function Slider({ label, value, min, max, step, onChange, fmt }) {
+// Snäppa logaritmiska budgetvärden till "runda" tal (finare i låga spann, grövre i höga).
+function snapBudget(v) {
+  if (v >= 100000) return Math.round(v / 10000) * 10000
+  if (v >= 10000) return Math.round(v / 1000) * 1000
+  if (v >= 1000) return Math.round(v / 100) * 100
+  return Math.round(v / 10) * 10
+}
+
+function Slider({ label, value, min, max, step, onChange, fmt, scale }) {
+  // Logaritmisk skala (för budgeten): reglaget arbetar i positionssteg 0-1000 och mappas till värdet, så
+  // att låga belopp får lika mycket "dragväg" som höga. Linjär skala annars (kostnadsreglagen).
+  if (scale === 'log') {
+    const lmin = Math.log(min), lmax = Math.log(max)
+    const safe = Math.min(max, Math.max(min, value))
+    const pos = Math.round(((Math.log(safe) - lmin) / (lmax - lmin)) * 1000)
+    const toVal = (p) => Math.exp(lmin + (p / 1000) * (lmax - lmin))
+    return (
+      <label className="uplift-slider">
+        <div className="uplift-slider__top"><span>{label}</span><span className="uplift-slider__val">{fmt(value)}</span></div>
+        <input
+          type="range" min={0} max={1000} step={1} value={pos}
+          onChange={(e) => onChange(snapBudget(toVal(Number(e.target.value))))}
+          aria-label={label} aria-valuetext={fmt(value)}
+          style={{ '--pct': `${(pos / 1000) * 100}%` }}
+        />
+      </label>
+    )
+  }
   const pct = max > min ? ((value - min) / (max - min)) * 100 : 50   // skydd mot division med noll om min === max
   return (
     <label className="uplift-slider">

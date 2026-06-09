@@ -1,125 +1,155 @@
 /**
- * Klientsidans spegel av OR-Tools-optimeraren i api_server/uplift.py (solve_allocation / _build_result).
+ * Klientsidans spegel av OR-Tools-optimeraren i api_server/uplift.py (reference_allocation, som i sin tur
+ * är byte-exakt lika med den auktoritativa pywraplp-MILP-lösaren solve_allocation).
  *
  * Varför en spegel: de tunga ML-beroendena (econml + ortools) ligger MEDVETET utanför den slimmade
  * Cloud Run-imagen, så backend-endpointen svarar 503 i drift. För att sidan ska räkna om allokeringen
- * direkt när man drar i reglagen (utan nätverksrundtur) löser vi samma "multiple-choice knapsack" här.
+ * direkt när man drar i reglagen (utan nätverksrundtur) löser vi samma problem här.
  *
- * Problemet är litet (7 stadsdelar x 3 val = 3^7 = 2187 kombinationer), så vi gör en UTTÖMMANDE sökning:
- * exakt globalt optimum, identiskt med CP-SAT. Samma heltalsskalning (öre), samma målfunktion
- * (netto * 1000 minus kostnad som tie-break) och samma kombinations-/ordningskonvention som Python,
- * så facit (backend) och klientberäkning ger exakt samma beslut.
+ * MODELL:
+ *  - Effektiviteten per broschyrtyp HÄRLEDS ur dess styckkostnad via en responskurva med avtagande
+ *    avkastning: resp(c) = M·(1 − e^(−c/τ)). En gratis broschyr övertygar ingen, en dyrare övertygar mer
+ *    men varje extra krona ger mindre. Därför finns ett INRE optimalt pris: att sänka styckkostnaden gör
+ *    inte automatiskt kampanjen mer lönsam.
+ *  - FRAKTIONELL täckning: varje stadsdel kan täckas helt eller delvis (en andel av hushållen), högst en
+ *    typ per stadsdel. Då gör även små budgetar något (en bråkdel av det bästa området).
  *
- * Lyftet (donationskronor per hushåll) kommer från den TRÄNADE Causal Forest-modellen: antingen
- * den bakade ögonblicksbilden (baseline.json) eller en färsk hämtning från backend.
+ * ALGORITM (exakt, speglar reference_allocation): uttömmande över de 3^7 valen av typ per stadsdel; för
+ * varje fast tilldelning är stadsdelarna delbara poster med konstant netto/kostnad per hushåll, så optimal
+ * täckning under budget ges av en fraktionell knapsack (girigt efter täthet = netto/kr). Bästa över alla
+ * tilldelningar = globalt optimum. Samma flyttalsmatematik som Python -> identiska beslut och siffror.
  */
 
 export const TREATMENTS = ['none', 'standard', 'premium']
 
-// Kronor -> öre, avrundat HALV UPPÅT. Speglar _to_ore i api_server/uplift.py (floor(x+0.5)) så att
-// optimum aldrig kan skilja sig på en öre mellan backend-facit och den här klientberäkningen.
-const toOre = (sek) => Math.round(sek * 100)
+// Responskurvans konstanter MÅSTE matcha api_server/uplift.py (RESPONSE_CEILING / RESPONSE_SCALE).
+const RESPONSE_CEILING = 2.2
+const RESPONSE_SCALE = 22.0
 
-/**
- * Per stadsdel och val: brutto, kostnad, netto och antal enheter (i kr).
- * net = hushåll * (lyft * multiplikator − styckkostnad). cost = hushåll * styckkostnad.
- */
-function optionEconomics(districts, uplift, econ) {
-  const opt = (hh, gross, cost) => ({ gross, cost, net: gross - cost, units: hh })
-  return districts.map((d) => {
-    // Robust mot trasig indata: ett icke-ändligt eller negativt lyft (ska aldrig hända från baseline.json
-    // eller den validerade backenden) behandlas som 0 så KPI:erna aldrig blir NaN och sidan inte blankar.
+export function response(cost) {
+  if (cost <= 0) return 0
+  return RESPONSE_CEILING * (1 - Math.exp(-cost / RESPONSE_SCALE))
+}
+
+/** Per stadsdel och typ: netto/hushåll, kostnad/hushåll, effektivitet. */
+function perHousehold(districts, uplift, econ) {
+  const multS = response(econ.costStandard)
+  const multP = response(econ.costPremium)
+  const per = {}
+  for (const d of districts) {
+    // Robust mot trasig indata: ett icke-ändligt eller negativt lyft behandlas som 0.
     const raw = uplift[d.key]
     const u = Number.isFinite(raw) && raw > 0 ? raw : 0
+    per[d.key] = {
+      standard: { net: u * multS - econ.costStandard, cost: econ.costStandard, mult: multS },
+      premium: { net: u * multP - econ.costPremium, cost: econ.costPremium, mult: multP },
+    }
+  }
+  return per
+}
+
+function decisionReason(decision, coverage, bestNetFull) {
+  const partial = coverage > 0 && coverage < 0.999
+  let base
+  if (decision === 'premium') base = 'Premium: den dyrare broschyren maximerar nettovinsten här.'
+  else if (decision === 'standard') base = 'Standard: bäst nettovinst per krona här.'
+  else {
+    if (bestNetFull <= 0) return 'Avstår: ett utskick skulle gå med förlust (lyftet täcker inte kostnaden).'
+    return 'Avstår: budgeten räcker till högre nettovinst i andra områden.'
+  }
+  if (partial) return `${base} Budgeten räcker till ${Math.round(coverage * 100)}% täckning.`
+  return base
+}
+
+/**
+ * Lös den fördelningsoptimala kampanjen (exakt: uttömmande typval + fraktionell knapsack).
+ * @param districts [{key,name,households}] i SAMMA ordning som backendens DISTRICTS
+ * @param uplift    {key: kr/hushåll}
+ * @param econ      {budget, costStandard, costPremium, rideCost}
+ * @returns samma form som backendens solution-payload (kpis + districts, med coverage/effectiveness)
+ */
+export function optimize(districts, uplift, econ) {
+  const per = perHousehold(districts, uplift, econ)
+  const n = districts.length
+  let bestNet = null
+  let bestAlloc = null
+  const total = 3 ** n
+  for (let combo = 0; combo < total; combo++) {
+    const assign = new Array(n)
+    let c = combo
+    for (let i = 0; i < n; i++) { assign[i] = TREATMENTS[c % 3]; c = Math.floor(c / 3) }
+
+    const items = []   // [täthet, netto/hh, kostnad/hh, hushåll, index, typ]: bara positivt netto/hushåll
+    for (let i = 0; i < n; i++) {
+      const t = assign[i]
+      if (t === 'none') continue
+      const o = per[districts[i].key][t]
+      if (o.net > 0 && o.cost > 0) items.push([o.net / o.cost, o.net, o.cost, districts[i].households, i, t])
+    }
+    items.sort((a, b) => (b[0] - a[0]) || (a[4] - b[4]))   // täthet fallande, tie-break: stadsdelsindex
+
+    let rem = econ.budget
+    let net = 0
+    const alloc = {}
+    for (const d of districts) alloc[d.key] = ['none', 0]
+    for (const [, nph, cph, hh, i, t] of items) {
+      if (rem <= 0) break
+      const full = cph * hh
+      if (full <= rem) { net += nph * hh; rem -= full; alloc[districts[i].key] = [t, 1] }
+      else { const f = rem / full; net += nph * hh * f; alloc[districts[i].key] = [t, f]; rem = 0; break }
+    }
+    if (bestNet === null || net > bestNet + 1e-9) { bestNet = net; bestAlloc = alloc }   // tidigaste vinner vid lika
+  }
+  return buildResult(districts, uplift, econ, bestAlloc)
+}
+
+function buildResult(districts, uplift, econ, alloc) {
+  const per = perHousehold(districts, uplift, econ)
+  const multS = response(econ.costStandard)
+  const multP = response(econ.costPremium)
+  let totalNet = 0, totalCost = 0, totalGross = 0
+  let unitsStandard = 0, unitsPremium = 0
+  const out = districts.map((d) => {
+    let [t, cov] = alloc[d.key]
+    cov = Math.max(0, Math.min(1, cov))
     const hh = d.households
+    const raw = uplift[d.key]
+    const u = Number.isFinite(raw) && raw > 0 ? raw : 0
+    let mult = 0, cost = 0
+    if (t === 'standard') { mult = multS; cost = econ.costStandard }
+    else if (t === 'premium') { mult = multP; cost = econ.costPremium }
+    else { cov = 0 }
+    const covered = hh * cov
+    const gross = covered * u * mult
+    const spend = covered * cost
+    const net = gross - spend
+    const units = Math.round(covered)
+    const decision = cov > 1e-9 ? t : 'none'
+    const bestNetFull = Math.max(per[d.key].standard.net, per[d.key].premium.net)
+    totalNet += net; totalCost += spend; totalGross += gross
+    if (decision === 'standard') unitsStandard += units
+    if (decision === 'premium') unitsPremium += units
     return {
       key: d.key,
       name: d.name,
       households: hh,
-      uplift: u,
-      opts: {
-        none: { gross: 0, cost: 0, net: 0, units: 0 },
-        standard: opt(hh, hh * u * econ.multStandard, hh * econ.costStandard),
-        premium: opt(hh, hh * u * econ.multPremium, hh * econ.costPremium),
-      },
-    }
-  })
-}
-
-function decisionReason(decision, bestProfitableNet) {
-  if (decision === 'premium') return 'Premium: det dyrare utskicket maximerar nettovinsten här.'
-  if (decision === 'standard') return 'Standard: ger bäst nettovinst per krona inom budget.'
-  if (bestProfitableNet <= 0) return 'Avstår: ett utskick skulle gå med förlust (lyftet täcker inte kostnaden).'
-  return 'Avstår: lönsamt i teorin, men budgeten räcker till högre nettovinst i andra områden.'
-}
-
-/**
- * Lös den fördelningsoptimala kampanjen (uttömmande sökning, exakt optimum).
- * @param districts [{key,name,households}] i SAMMA ordning som backendens DISTRICTS
- * @param uplift    {key: kr/hushåll}
- * @param econ      {budget, costStandard, costPremium, multStandard, multPremium, rideCost}
- * @returns samma form som backendens solution-payload (kpis + districts)
- */
-export function optimize(districts, uplift, econ) {
-  const rows = optionEconomics(districts, uplift, econ)
-  const n = rows.length
-  const budgetOre = toOre(econ.budget)
-
-  let bestScore = null
-  let bestChoice = null
-  const total = 3 ** n
-  for (let combo = 0; combo < total; combo++) {
-    const choice = new Array(n)
-    let c = combo
-    for (let i = 0; i < n; i++) { choice[i] = TREATMENTS[c % 3]; c = Math.floor(c / 3) }
-
-    let costOre = 0
-    for (let i = 0; i < n; i++) costOre += toOre(rows[i].opts[choice[i]].cost)
-    if (costOre > budgetOre) continue
-
-    let score = 0
-    for (let i = 0; i < n; i++) {
-      score += toOre(rows[i].opts[choice[i]].net) * 1000 - toOre(rows[i].opts[choice[i]].cost)
-    }
-    // Strikt > behåller den TIDIGASTE kombinationen vid exakt lika (matchar Pythons brute_force).
-    if (bestScore === null || score > bestScore) { bestScore = score; bestChoice = choice }
-  }
-
-  const chosen = {}
-  rows.forEach((r, i) => { chosen[r.key] = bestChoice[i] })
-  return buildResult(rows, chosen, econ)
-}
-
-function buildResult(rows, chosen, econ) {
-  let totalNet = 0, totalCost = 0, totalGross = 0
-  let unitsStandard = 0, unitsPremium = 0
-  const out = rows.map((row) => {
-    const t = chosen[row.key]
-    const o = row.opts[t]
-    const profitable = { standard: row.opts.standard.net, premium: row.opts.premium.net }
-    const bestProfitableNet = Math.max(profitable.standard, profitable.premium)
-    totalNet += o.net; totalCost += o.cost; totalGross += o.gross
-    if (t === 'standard') unitsStandard += o.units
-    if (t === 'premium') unitsPremium += o.units
-    return {
-      key: row.key,
-      name: row.name,
-      households: row.households,
-      uplift_sek: round2(row.uplift),
-      decision: t,
-      units: o.units,
-      cost_sek: round2(o.cost),
-      gross_sek: round2(o.gross),
-      net_sek: round2(o.net),
-      roi: o.cost > 0 ? round3(o.net / o.cost) : null,
-      reason: decisionReason(t, bestProfitableNet),
+      uplift_sek: round2(u),
+      decision,
+      coverage: round4(cov),
+      effectiveness: round3(mult),
+      units,
+      cost_sek: round2(spend),
+      gross_sek: round2(gross),
+      net_sek: round2(net),
+      roi: spend > 0 ? round3(net / spend) : null,
+      reason: decisionReason(decision, cov, bestNetFull),
     }
   })
 
   const freeRides = econ.rideCost > 0 ? Math.floor(totalNet / econ.rideCost) : 0
   return {
     ok: true,
-    solver: 'klient (uttömmande, speglar OR-Tools)',
+    solver: 'klient (uttömmande + fraktionell knapsack, speglar OR-Tools)',
     kpis: {
       net_profit_sek: round2(totalNet),
       gross_donations_sek: round2(totalGross),
@@ -132,6 +162,7 @@ function buildResult(rows, chosen, econ) {
       free_rides_funded: freeRides,
       districts_premium: out.filter((p) => p.decision === 'premium').length,
       districts_standard: out.filter((p) => p.decision === 'standard').length,
+      districts_partial: out.filter((p) => p.coverage > 0 && p.coverage < 0.999).length,
       districts_skipped: out.filter((p) => p.decision === 'none').length,
     },
     districts: out,

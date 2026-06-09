@@ -10,11 +10,13 @@
   },
   "ride_cost_sek": 150.0,
   "defaults": {
-    "budget_sek": 250000.0,
-    "cost_standard": 8.0,
-    "cost_premium": 32.0,
-    "mult_standard": 1.0,
-    "mult_premium": 1.5
+    "budget_sek": 400000.0,
+    "cost_standard": 16.0,
+    "cost_premium": 40.0
+  },
+  "response": {
+    "ceiling": 2.2,
+    "scale": 22.0
   },
   "districts": [
     {
@@ -30,36 +32,36 @@
       ],
       "polygon": [
         [
-          63.83223,
+          63.832858,
           20.263
         ],
         [
-          63.830448,
-          20.273537
+          63.830509,
+          20.273676
         ],
         [
           63.8258,
-          20.282174
+          20.277808
         ],
         [
-          63.821179,
-          20.273475
+          63.82076,
+          20.274427
         ],
         [
-          63.817396,
+          63.817382,
           20.263
         ],
         [
-          63.820766,
-          20.251589
+          63.820688,
+          20.251411
         ],
         [
           63.8258,
-          20.245744
+          20.245106
         ],
         [
-          63.830313,
-          20.252769
+          63.831268,
+          20.250603
         ]
       ],
       "uplift_sek": 30.58
@@ -77,36 +79,36 @@
       ],
       "polygon": [
         [
-          63.827041,
+          63.826692,
           20.247
         ],
         [
-          63.824434,
-          20.255918
+          63.824547,
+          20.256173
         ],
         [
           63.8205,
-          20.262819
+          20.262141
         ],
         [
-          63.815547,
-          20.258226
+          63.816488,
+          20.256094
         ],
         [
-          63.814916,
+          63.814672,
           20.247
         ],
         [
-          63.816617,
-          20.238199
+          63.816439,
+          20.237794
         ],
         [
           63.8205,
-          20.231524
+          20.232132
         ],
         [
-          63.82501,
-          20.236777
+          63.825131,
+          20.236503
         ]
       ],
       "uplift_sek": 51.25
@@ -124,36 +126,36 @@
       ],
       "polygon": [
         [
-          63.826715,
+          63.826157,
           20.31
         ],
         [
-          63.82528,
-          20.324235
+          63.825382,
+          20.324466
         ],
         [
           63.819,
-          20.328025
+          20.32983
         ],
         [
-          63.812667,
-          20.324353
+          63.813763,
+          20.321869
         ],
         [
-          63.810193,
+          63.81104,
           20.31
         ],
         [
-          63.812887,
-          20.296145
+          63.812927,
+          20.296236
         ],
         [
           63.819,
-          20.292387
+          20.293739
         ],
         [
-          63.824425,
-          20.297705
+          63.824616,
+          20.297272
         ]
       ],
       "uplift_sek": 7.61
@@ -171,36 +173,36 @@
       ],
       "polygon": [
         [
-          63.851811,
+          63.851459,
           20.278
         ],
         [
-          63.849577,
-          20.29065
+          63.848691,
+          20.288642
         ],
         [
           63.844,
-          20.292273
+          20.294887
         ],
         [
-          63.838845,
-          20.289695
+          63.839359,
+          20.288528
         ],
         [
-          63.837764,
+          63.836444,
           20.278
         ],
         [
-          63.838872,
-          20.266367
+          63.838354,
+          20.265192
         ],
         [
           63.844,
-          20.260219
+          20.259909
         ],
         [
-          63.849783,
-          20.264881
+          63.849865,
+          20.264695
         ]
       ],
       "uplift_sek": 38.71
@@ -218,36 +220,36 @@
       ],
       "polygon": [
         [
-          63.862247,
+          63.863911,
           20.29
         ],
         [
-          63.860778,
-          20.300844
+          63.861222,
+          20.301851
         ],
         [
           63.856,
-          20.306919
+          20.30669
         ],
         [
-          63.850707,
-          20.302013
+          63.850319,
+          20.302893
         ],
         [
-          63.849487,
+          63.849244,
           20.29
         ],
         [
-          63.851036,
-          20.278734
+          63.851521,
+          20.279835
         ],
         [
           63.856,
-          20.275347
+          20.271824
         ],
         [
-          63.86048,
-          20.279834
+          63.861311,
+          20.277946
         ]
       ],
       "uplift_sek": 33.4
@@ -265,36 +267,36 @@
       ],
       "polygon": [
         [
-          63.820093,
+          63.820092,
           20.332
         ],
         [
-          63.817391,
-          20.344216
+          63.81635,
+          20.341857
         ],
         [
           63.812,
-          20.349742
+          20.346497
         ],
         [
-          63.807473,
-          20.342258
+          63.807451,
+          20.342308
         ],
         [
-          63.804288,
+          63.804089,
           20.332
         ],
         [
-          63.806667,
-          20.319916
+          63.80686,
+          20.320352
         ],
         [
           63.812,
-          20.314531
+          20.314297
         ],
         [
-          63.816991,
-          20.32069
+          63.816335,
+          20.322176
         ]
       ],
       "uplift_sek": 48.95
@@ -312,36 +314,36 @@
       ],
       "polygon": [
         [
-          63.840079,
+          63.838813,
           20.185
         ],
         [
-          63.837463,
-          20.19512
+          63.837296,
+          20.194741
         ],
         [
           63.833,
-          20.199247
+          20.201211
         ],
         [
-          63.82865,
-          20.194865
+          63.82899,
+          20.194093
         ],
         [
-          63.826544,
+          63.825553,
           20.185
         ],
         [
-          63.829084,
-          20.176121
+          63.828984,
+          20.175894
         ],
         [
           63.833,
-          20.168776
+          20.168448
         ],
         [
-          63.837249,
-          20.175364
+          63.838034,
+          20.173585
         ]
       ],
       "uplift_sek": 60.56
@@ -358,27 +360,28 @@
   },
   "solution": {
     "ok": true,
-    "solver": "OPTIMAL",
+    "solver": "referens (uttömmande + fraktionell knapsack)",
     "economics": {
-      "budget_sek": 250000.0,
-      "cost_standard": 8.0,
-      "cost_premium": 32.0,
-      "mult_standard": 1.0,
-      "mult_premium": 1.5,
+      "budget_sek": 400000.0,
+      "cost_standard": 16.0,
+      "cost_premium": 40.0,
+      "effectiveness_standard": 1.137,
+      "effectiveness_premium": 1.843,
       "ride_cost_sek": 150.0
     },
     "kpis": {
-      "net_profit_sek": 757612.35,
-      "gross_donations_sek": 991212.35,
-      "spend_sek": 233600.0,
-      "budget_sek": 250000.0,
-      "budget_utilization": 0.9344,
-      "units_standard": 20400,
+      "net_profit_sek": 713950.41,
+      "gross_donations_sek": 1113950.41,
+      "spend_sek": 400000.0,
+      "budget_sek": 400000.0,
+      "budget_utilization": 1.0,
+      "units_standard": 19500,
       "units_premium": 2200,
-      "units_total": 22600,
-      "free_rides_funded": 5050,
+      "units_total": 21700,
+      "free_rides_funded": 4759,
       "districts_premium": 1,
       "districts_standard": 5,
+      "districts_partial": 1,
       "districts_skipped": 1
     },
     "districts": [
@@ -388,12 +391,14 @@
         "households": 5200,
         "uplift_sek": 30.58,
         "decision": "standard",
-        "units": 5200,
-        "cost_sek": 41600.0,
-        "gross_sek": 159003.26,
-        "net_sek": 117403.26,
-        "roi": 2.822,
-        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+        "coverage": 0.8269,
+        "effectiveness": 1.137,
+        "units": 4300,
+        "cost_sek": 68800.0,
+        "gross_sek": 149484.19,
+        "net_sek": 80684.19,
+        "roi": 1.173,
+        "reason": "Standard: bäst nettovinst per krona här. Budgeten räcker till 83% täckning."
       },
       {
         "key": "haga",
@@ -401,12 +406,14 @@
         "households": 2600,
         "uplift_sek": 51.25,
         "decision": "standard",
+        "coverage": 1.0,
+        "effectiveness": 1.137,
         "units": 2600,
-        "cost_sek": 20800.0,
-        "gross_sek": 133241.37,
-        "net_sek": 112441.37,
-        "roi": 5.406,
-        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+        "cost_sek": 41600.0,
+        "gross_sek": 151482.75,
+        "net_sek": 109882.75,
+        "roi": 2.641,
+        "reason": "Standard: bäst nettovinst per krona här."
       },
       {
         "key": "alidhem",
@@ -414,6 +421,8 @@
         "households": 6800,
         "uplift_sek": 7.61,
         "decision": "none",
+        "coverage": 0.0,
+        "effectiveness": 0.0,
         "units": 0,
         "cost_sek": 0.0,
         "gross_sek": 0.0,
@@ -427,12 +436,14 @@
         "households": 4200,
         "uplift_sek": 38.71,
         "decision": "standard",
+        "coverage": 1.0,
+        "effectiveness": 1.137,
         "units": 4200,
-        "cost_sek": 33600.0,
-        "gross_sek": 162579.15,
-        "net_sek": 128979.15,
-        "roi": 3.839,
-        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+        "cost_sek": 67200.0,
+        "gross_sek": 184837.02,
+        "net_sek": 117637.02,
+        "roi": 1.751,
+        "reason": "Standard: bäst nettovinst per krona här."
       },
       {
         "key": "ersboda",
@@ -440,12 +451,14 @@
         "households": 4800,
         "uplift_sek": 33.4,
         "decision": "standard",
+        "coverage": 1.0,
+        "effectiveness": 1.137,
         "units": 4800,
-        "cost_sek": 38400.0,
-        "gross_sek": 160318.32,
-        "net_sek": 121918.32,
-        "roi": 3.175,
-        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+        "cost_sek": 76800.0,
+        "gross_sek": 182266.68,
+        "net_sek": 105466.68,
+        "roi": 1.373,
+        "reason": "Standard: bäst nettovinst per krona här."
       },
       {
         "key": "tomtebo",
@@ -453,12 +466,14 @@
         "households": 3600,
         "uplift_sek": 48.95,
         "decision": "standard",
+        "coverage": 1.0,
+        "effectiveness": 1.137,
         "units": 3600,
-        "cost_sek": 28800.0,
-        "gross_sek": 176229.71,
-        "net_sek": 147429.71,
-        "roi": 5.119,
-        "reason": "Standard: ger bäst nettovinst per krona inom budget."
+        "cost_sek": 57600.0,
+        "gross_sek": 200356.41,
+        "net_sek": 142756.41,
+        "roi": 2.478,
+        "reason": "Standard: bäst nettovinst per krona här."
       },
       {
         "key": "umedalen",
@@ -466,23 +481,26 @@
         "households": 2200,
         "uplift_sek": 60.56,
         "decision": "premium",
+        "coverage": 1.0,
+        "effectiveness": 1.843,
         "units": 2200,
-        "cost_sek": 70400.0,
-        "gross_sek": 199840.54,
-        "net_sek": 129440.54,
-        "roi": 1.839,
-        "reason": "Premium: det dyrare utskicket maximerar nettovinsten här."
+        "cost_sek": 88000.0,
+        "gross_sek": 245523.37,
+        "net_sek": 157523.37,
+        "roi": 1.79,
+        "reason": "Premium: den dyrare broschyren maximerar nettovinsten här."
       }
     ]
   },
   "model": {
     "estimator": "econml.dml.CausalForestDML",
-    "optimizer": "ortools.sat (CP-SAT, multiple-choice knapsack)",
+    "optimizer": "ortools (pywraplp MILP/CBC, fraktionell multiple-choice knapsack)",
     "features": [
       "median_income_ksek",
       "median_age",
       "owner_share"
     ],
-    "objective": "Maximera finansiell nettovinst (donationer minus produkt- och portokostnad)."
+    "objective": "Maximera finansiell nettovinst (donationer minus produkt- och portokostnad).",
+    "response_curve": "effektivitet(styckkostnad) = M·(1−e^(−kostnad/τ)): avtagande avkastning, inre optimalt pris."
   }
 }
