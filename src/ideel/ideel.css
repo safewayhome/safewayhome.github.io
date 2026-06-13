@@ -1,106 +1,239 @@
 /* Fristående stilbas för den publika undersidan /ideel. Medvetet SKILD från tavlans index.css
-   (som sätter body overflow:hidden för whiteboarden): den här sidan ska scrolla som en vanlig sajt. */
-:root { color-scheme: light; }
+   (som sätter body overflow:hidden för whiteboarden): den här sidan ska scrolla som en vanlig sajt.
+
+   Designspråk (editorial plansch, "plate"): varm gräddvit yta, ALL typografi och grafik i en enhetlig
+   rosa familj. Vänster spalt med boktrycks-typografi, höger en fast scen med den interaktiva
+   partikelfjärilen (three.js) och det streckade neonhjärtat i mitten. FORMAT: aldrig AI-tankestreck
+   som separator, alltid kolon (:). */
+
+:root {
+  color-scheme: light;
+  /* Enhetlig rosa familj mot gräddvitt, kalibrerad mot WCAG AA på cream-botten:
+     --ink 6.4:1 (brödtext), --ink-soft 4.9:1 (sekundär småtext), --bright 4.1:1 (stora rubriker,
+     klarar 3:1), --neon-text 3.3:1 (kursiva accentord i stor display-grad), --neon enbart för
+     glöd/grafik/logotyp (aria-hidden dekor utan kontrastkrav). --hairline är dekorativa linjer;
+     --hairline-strong (3.3:1) används för interaktiva avgränsningar (fält, konturknappar). */
+  --cream: #f7f1e6;
+  --ink: #a1235c;
+  --ink-soft: rgba(161, 35, 92, 0.85);
+  --ink-faint: rgba(161, 35, 92, 0.52);
+  --bright: #d6336c;
+  --btn: #c92e64;
+  --neon: #ff5fa2;
+  --neon-text: #f03a82;
+  --hairline: rgba(161, 35, 92, 0.28);
+  --hairline-strong: rgba(161, 35, 92, 0.65);
+  --hairline-soft: rgba(161, 35, 92, 0.16);
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'Karla', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Spline Sans Mono', 'SF Mono', Menlo, monospace;
+}
 
 * { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 html, body, #root { margin: 0; min-height: 100%; }
 
 body {
-  /* Sidans text: Shantell Sans (handgjord, lekfull men läsbar). Rubriker sätts till Fraunces inline,
-     UI (knappar/fält) till Nunito. Nunito + system-sans som reserv tills webbtypsnitten laddats. */
-  font-family: 'Shantell Sans', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  /* Ljus, varm gräddvit gryningsbakgrund med en mjuk varm ton i hörnen (tydligare än natt-versionen). */
-  background: #fbf4ef;
-  color: #3b2f3a;
+  font-family: var(--sans);
+  background: var(--cream);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;
   /* Skydd mot oavsiktlig horisontell scroll (sidan ska bara scrolla vertikalt). */
   overflow-x: hidden;
 }
 
+/* Pappersgryn över hela planschen (SVG-noise som data-URI: img-src data: i CSP). Multiplicerande och
+   mycket svagt, så cream-ytan får tryckt textur utan att smutsa ned typografin eller partiklarna. */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+  opacity: 0.05;
+}
+
 button, input, textarea { font-family: inherit; }
 a { color: inherit; }
+::selection { background: rgba(255, 95, 162, 0.30); }
 
-/* Synlig tangentbordsfokus (WCAG 2.4.7). Fälten har outline:none + inline-border, så vi använder en
-   mjuk roseguld box-shadow-ring (påverkas inte av inline-stilen) för inputs/textarea, och outline för
-   knappar/länkar. Tonen är varm, inte hård, för att passa den ombonade, ljusa känslan. */
-input:focus-visible, textarea:focus-visible {
-  border-color: #95502f;
-  box-shadow: 0 0 0 3px rgba(149, 80, 47, 0.75);
+/* ── Planschens grundlayout ──────────────────────────────────────────────────
+   Höger: fast scen (partikelfjärilen) som står stilla medan vänsterspalten scrollar förbi,
+   precis som ett uppslag där illustrationen är planschens högra blad. */
+.ideel-stage {
+  position: fixed; top: 0; right: 0;
+  width: 46%; height: 100vh; height: 100dvh;
+  border-left: 1px solid var(--hairline-soft);
+  background: radial-gradient(ellipse 70% 55% at 52% 46%, rgba(255, 95, 162, 0.10), transparent 70%);
+  overflow: hidden;
 }
-button:focus-visible, a:focus-visible, input[type="checkbox"]:focus-visible {
-  outline: 2px solid #95502f;
+.ideel-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.ideel-main {
+  position: relative; z-index: 1;
+  width: 54%;
+  padding: 0 clamp(28px, 4.5vw, 72px) 0 clamp(22px, 5.5vw, 88px);
+}
+
+/* Smalare skärm: scenen blir ett eget blad ovanför texten i stället för ett fast högerblad. */
+@media (max-width: 979px) {
+  .ideel-stage { position: relative; width: 100%; height: 64vh; min-height: 420px; border-left: none; border-bottom: 1px solid var(--hairline-soft); }
+  .ideel-main { width: 100%; padding: 0 clamp(20px, 6vw, 48px); }
+}
+
+/* ── Toppnav: tunn editorial rad över hela planschen ───────────────────────── */
+.ideel-nav {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: clamp(16px, 2.6vh, 26px) clamp(20px, 3.4vw, 44px);
+}
+.ideel-nav-links { display: flex; gap: clamp(16px, 2.6vw, 34px); }
+.ideel-navlink {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.22em; text-transform: uppercase; text-decoration: none;
+  color: var(--ink); opacity: 0.85; transition: opacity 0.25s ease, text-shadow 0.25s ease;
+}
+.ideel-navlink:hover { opacity: 1; text-shadow: 0 0 14px rgba(255, 95, 162, 0.7); }
+@media (max-width: 719px) { .ideel-nav-links { display: none; } }
+
+/* Konturerad pill (som planschens "try the api"): hårfin rosa ram som fylls vid hover. */
+.ideel-pill {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.2em; text-transform: uppercase; text-decoration: none; white-space: nowrap;
+  color: var(--ink); padding: 10px 20px; border-radius: 999px;
+  border: 1px solid var(--hairline-strong); background: transparent;
+  transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.ideel-pill:hover {
+  background: var(--btn); border-color: var(--btn); color: var(--cream);
+  box-shadow: 0 6px 24px rgba(214, 51, 108, 0.35);
+}
+
+/* Mittlänkarna centreras i VÄNSTERSPALTEN (27 % = mitten av 54 %-bladet), inte i hela fönstret:
+   annars skär scenens sömlinje (54 %-gränsen) rakt genom sista länken. */
+@media (min-width: 980px) {
+  .ideel-nav-links { position: absolute; left: 27%; transform: translateX(-50%); }
+}
+
+/* ── Typografiska byggstenar ─────────────────────────────────────────────────── */
+/* Etikett i versal mono med liten rosa list framför (planschens "anthropic · plate no v"-rad).
+   Sektionsetiketterna renderas som h2 (rubrikhierarkin h1 -> h2 -> h3 ska inte hoppa över nivåer),
+   därför nollställs marginalen här. */
+.ideel-label {
+  display: flex; align-items: center; gap: 14px; margin: 0;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.26em; text-transform: uppercase; color: var(--ink-soft);
+}
+.ideel-label::before { content: ''; width: 34px; height: 1px; background: var(--bright); flex: 0 0 34px; }
+
+/* ── Formulär: sömlösa understrukna fält (boktryck, inte SaaS-boxar) ─────────── */
+.ideel-field-label {
+  display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 8px;
+}
+.ideel-input {
+  width: 100%; padding: 10px 2px 12px; font-family: var(--sans); font-size: 15.5px;
+  color: var(--ink); background: transparent; border: none;
+  border-bottom: 1px solid var(--hairline-strong); border-radius: 0; outline: none;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+/* Placeholdrarna bär instruktioner: AA-kontrast, kursiv skiljer dem från ifyllt värde. */
+.ideel-input::placeholder { color: rgba(161, 35, 92, 0.82); font-style: italic; opacity: 1; }
+.ideel-input:focus-visible {
+  border-bottom-color: var(--bright);
+  box-shadow: 0 1px 0 0 var(--bright), 0 10px 22px -14px rgba(255, 95, 162, 0.55);
+}
+textarea.ideel-input { resize: vertical; min-height: 110px; line-height: 1.55; }
+
+/* Synlig tangentbordsfokus för knappar/länkar/kryssruta (WCAG 2.4.7). */
+button:focus-visible, a:focus-visible, input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--bright);
   outline-offset: 3px;
 }
 
-/* Mjuk entré för textavsnitt + en lugn andning på de diffusa, varma ljus-aurorna.
-   prefers-reduced-motion stänger av all rörelse för den som föredrar det. */
-@keyframes ideel-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@keyframes ideel-aura { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.06); } }
-
-.ideel-rise { animation: ideel-rise 0.7s ease both; }
-
-/* Den slingrande, glödande "Leden" (rutt-linjen i roseguld/rosa): glödlagret andas mjukt.
-   Fotstegen längs leden tänds i tur och ordning (animation-delay per fot) så de "vandrar" nerför sidan,
-   precis som i appen. Allt mycket subtilt. */
-@keyframes ideel-breathe { 0%, 100% { opacity: 0.24; } 50% { opacity: 0.42; } }
-@keyframes ideel-step { 0%, 100% { opacity: 0.22; } 45% { opacity: 0.72; } }
-.ideel-led-glow { animation: ideel-breathe 6.5s ease-in-out infinite; }
-.ideel-step { opacity: 0.4; animation: ideel-step 3.6s ease-in-out infinite; }
-
-/* Skräddarsydda premium-knappar (INTE de generiska runda pill-knapparna): rektangulära med liten radie,
-   versal text med gles teckenavstånd och fina hover-rörelser. Primär = varm fylld med inre highlight-ram
-   och ett diagonalt ljussvep vid hover (lyfter lätt). Sekundär = kontur i roseguld där en varm fyllning
-   sveper in från vänster och texten blir cream. UI-text i Nunito för skärpa. */
+/* ── Knappar ─────────────────────────────────────────────────────────────────── */
 .ideel-btn {
-  position: relative; display: inline-flex; align-items: center; justify-content: center;
-  font-family: 'Nunito', system-ui, sans-serif; font-weight: 800; font-size: 13px;
-  letter-spacing: 0.16em; text-transform: uppercase; text-decoration: none; white-space: nowrap;
-  padding: 16px 30px; border-radius: 3px; border: none; cursor: pointer;
-  overflow: hidden; isolation: isolate;
-  transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s ease, color .3s ease;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  letter-spacing: 0.2em; text-transform: uppercase; text-decoration: none; white-space: nowrap;
+  padding: 16px 30px; border-radius: 999px; border: none; cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.3s ease, background 0.3s ease, color 0.3s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.ideel-btn:disabled { opacity: 0.6; cursor: wait; transform: none; }
-/* Inaktiverad knapp (t.ex. medan formuläret skickas) ska INTE reagera på hover. :disabled:hover har högre
-   specificitet än :hover, så lyft + ljussvep + fyllning neutraliseras när knappen är disabled. */
-.ideel-btn:disabled:hover { transform: none; }
-.ideel-btn--primary:disabled:hover { box-shadow: 0 10px 26px rgba(176,44,84,0.26), inset 0 0 0 1px rgba(255,255,255,0.16), inset 0 1px 0 rgba(255,255,255,0.28); }
-.ideel-btn--primary:disabled:hover::after { transform: translateX(-130%); }
-.ideel-btn--ghost:disabled:hover { color: #3b2f3a; box-shadow: inset 0 0 0 1.5px rgba(149,80,47,0.55); }
-.ideel-btn--ghost:disabled:hover::before { transform: scaleX(0); }
-
+/* --btn (#c92e64) i stället för --bright som knappbotten: cream-texten på knappen är liten
+   (11.5px) och behöver 4.5:1, vilket #d6336c inte når. Hover går MÖRKARE av samma skäl. */
 .ideel-btn--primary {
-  color: #fff;
-  background: linear-gradient(105deg, #a8551c, #a84636 50%, #b02c54);
-  box-shadow: 0 10px 26px rgba(176,44,84,0.26), inset 0 0 0 1px rgba(255,255,255,0.16), inset 0 1px 0 rgba(255,255,255,0.28);
+  color: var(--cream); background: var(--btn);
+  box-shadow: 0 10px 28px rgba(214, 51, 108, 0.30);
 }
-.ideel-btn--primary::after {            /* diagonalt ljussvep, ligger bakom texten */
-  content: ''; position: absolute; inset: 0; z-index: -1;
-  background: linear-gradient(110deg, transparent 32%, rgba(255,255,255,0.38) 50%, transparent 68%);
-  transform: translateX(-130%); transition: transform .7s cubic-bezier(.2,.7,.2,1);
+.ideel-btn--primary:hover {
+  transform: translateY(-2px); background: #bd2a5e;
+  box-shadow: 0 14px 34px rgba(255, 95, 162, 0.45), 0 0 24px rgba(255, 95, 162, 0.35);
 }
-.ideel-btn--primary:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(176,44,84,0.34), inset 0 0 0 1px rgba(255,255,255,0.22), inset 0 1px 0 rgba(255,255,255,0.30); }
-.ideel-btn--primary:hover::after { transform: translateX(130%); }
+.ideel-btn--ghost { color: var(--ink); background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.ideel-btn--ghost:hover { box-shadow: inset 0 0 0 1px var(--bright), 0 0 20px rgba(255, 95, 162, 0.25); color: var(--bright); }
+.ideel-btn:disabled { opacity: 0.55; cursor: wait; transform: none; }
+.ideel-btn--primary:disabled:hover { transform: none; background: var(--btn); box-shadow: 0 10px 28px rgba(214, 51, 108, 0.30); }
 
-.ideel-btn--ghost {
-  color: #3b2f3a; background: transparent;
-  box-shadow: inset 0 0 0 1.5px rgba(149,80,47,0.55);
+/* Samtyckeskryssrutan i samma rosa familj som resten (UA-grå är sidans enda främmande kulör):
+   appearance none + egen ram, bocken som data-URI-SVG vid :checked (CSP: img-src data:). */
+.ideel-check {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; flex: 0 0 16px; margin: 0; cursor: pointer;
+  border: 1.5px solid var(--hairline-strong); border-radius: 4px; background: transparent;
+  transition: background 0.2s ease, border-color 0.2s ease;
 }
-.ideel-btn--ghost::before {            /* varm fyllning som sveper in från vänster */
-  content: ''; position: absolute; inset: 0; z-index: -1; transform-origin: left center;
-  transform: scaleX(0); transition: transform .42s cubic-bezier(.2,.7,.2,1);
-  background: linear-gradient(105deg, #a8551c, #a84636 50%, #b02c54);
+.ideel-check:checked {
+  border-color: var(--btn);
+  background: var(--btn) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.5 L5 9 L9.5 3.5' fill='none' stroke='%23f7f1e6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/11px no-repeat;
 }
-.ideel-btn--ghost:hover { color: #fff; box-shadow: inset 0 0 0 1.5px rgba(149,80,47,0); }
-.ideel-btn--ghost:hover::before { transform: scaleX(1); }
 
-/* tunna, varma scrollbars i linje med den ljusa gryningsytan */
+/* ── Sektionslayout som kräver brytpunkter (inline-stil räcker inte) ────────── */
+/* Hero: på desktop centreras texten mot det fasta högerbladet; på mobil är scenen ett eget blad
+   ovanför, så hjälphöjden och centreringen tas bort (annars två stora döda cream-band). */
+.ideel-hero {
+  min-height: min(92vh, 860px);
+  display: flex; flex-direction: column; justify-content: center;
+  padding: clamp(96px, 14vh, 150px) 0 clamp(40px, 7vh, 80px);
+}
+/* Faktamodulen: alltid 3 spalter som plansch, hel spalt per kort på smal skärm
+   (auto-fit gav en haltande 2+1-layout i mellanlägen). */
+.ideel-facts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(18px, 2vw, 30px); }
+@media (max-width: 979px) {
+  .ideel-hero { min-height: 0; justify-content: flex-start; padding: 44px 0 10px; }
+}
+@media (max-width: 719px) {
+  .ideel-facts-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Rörelse: mjuk entré, hjärtats puls och scroll-visaren ──────────────────── */
+@keyframes ideel-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.ideel-rise { animation: ideel-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* Logotypens neonglöd andas långsamt: två lager drop-shadow ger kärna + gloria. */
+@keyframes ideel-heart {
+  0%, 100% { filter: drop-shadow(0 0 5px rgba(255, 95, 162, 0.9)) drop-shadow(0 0 22px rgba(255, 95, 162, 0.45)); }
+  50% { filter: drop-shadow(0 0 8px rgba(255, 95, 162, 1)) drop-shadow(0 0 34px rgba(255, 95, 162, 0.65)); }
+}
+.ideel-heart { animation: ideel-heart 4.2s ease-in-out infinite; }
+
+@keyframes ideel-scrollcue { 0% { transform: scaleY(0); transform-origin: top; } 45% { transform: scaleY(1); transform-origin: top; } 55% { transform: scaleY(1); transform-origin: bottom; } 100% { transform: scaleY(0); transform-origin: bottom; } }
+.ideel-scrollcue { animation: ideel-scrollcue 2.6s ease-in-out infinite; }
+
+/* tunna, varma scrollbars i linje med planschen */
 *::-webkit-scrollbar { width: 11px; height: 11px; }
-*::-webkit-scrollbar-thumb { background: rgba(176,106,72,0.30); border-radius: 8px; border: 3px solid #fbf4ef; }
+*::-webkit-scrollbar-thumb { background: rgba(214, 51, 108, 0.30); border-radius: 8px; border: 3px solid var(--cream); }
 *::-webkit-scrollbar-track { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  html { scroll-behavior: auto; }
+  /* iteration-count 1 krävs: utan den loopar infinite-animationerna (hjärtglöd, scrollvisare)
+     på 0.001ms och flimrar varje bildruta i vissa motorer, motsatsen till reducerad rörelse. */
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

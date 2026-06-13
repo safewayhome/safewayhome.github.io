@@ -1,268 +1,236 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { submitInterview, validateInterview } from './interviews'
 
+// three.js är tung: svärmen lazy-laddas i egen chunk så typografin målas direkt (LCP är texten)
+// och WebGL strömmar in strax efter. Hjärtlogotypen ligger här (ren SVG) och syns omedelbart.
+const Swarm = lazy(() => import('./Swarm.jsx'))
+
 /* ───────────────────────── Ideell förening: /ideel ─────────────────────────
-   En levande, mjuk och personligt utformad sida som ger röst åt "de tysta offren": unga kvinnors dolda
-   otrygghet i vardagen. Tonen är varm, ombonad och trygg, aldrig tung eller skrämmande.
+   Publik landningssida som ger röst åt "de tysta": unga kvinnors dolda otrygghet i vardagen.
 
-   Designspråk (medvetet HANDGJORT, inte SaaS/AI-mall):
-     - Inga stela rektangulära kort. Texten flyter fritt mot en ljus, varm gräddvit yta.
-     - En mycket tunn, mjukt kurvad och glödande "Led" (rutt-linje i roseguld och rosa) slingrar sig
-       nerför sidan bakom texten, med några små, subtila fotsteg som vandrar längs den (knyter ihop
-       sidan med appens själ: vägen hem).
-     - Stora, mycket diffusa ljus-auras (radial-gradients med stort blur) som mjuka, varma ljuspölar: en
-       bärnstens/guldig glöd bakom BRÅ-statistiken (en trygg, belyst zon) och en blush-rosa glöd bakom
-       formuläret.
-     - Mjuk, varm typografi (text-transparenta rubriker), inga tech-ikoner, sömlösa formulärfält med en
-       hårfin roseguld-ram.
+   Designspråk (editorial plansch, INTE SaaS/AI-mall):
+     - Ett uppslag: vänster blad med boktrycks-typografi som scrollar, höger ett fast blad med den
+       interaktiva partikelfjärilen (three.js) och föreningens streckade neonhjärta som glödande kärna.
+     - Varm gräddvit botten, ALL typografi och grafik i en enhetlig rosa familj (djup ros för läsbar
+       brödtext, klar ros för rubriker, neonros för glöd): en kulör, många valörer.
+     - Fraunces (elegant display-serif, roman + kursiv accent) för rubriker, Karla (ren, mycket läsbar
+       sans) för brödtext, Spline Sans Mono i spärrad versal för nav/etiketter.
 
-   Allt textinnehåll, den källkritiska BRÅ-hänvisningen och transparensen om att appen är HELT
-   kostnadsfri är oförändrade. FORMAT: aldrig AI-tankestreck som separator, alltid kolon (:). */
+   Innehållet, BRÅ/NTU-källhänvisningen och transparensen om att appen är HELT
+   kostnadsfri följer föreningens manus. Formuläret återanvänder det säkrade datalagret
+   (write-only Supabase-tabell med RLS: samtycke + berättelse krävs, inget kan läsas tillbaka).
+   FORMAT: aldrig AI-tankestreck som separator, alltid kolon (:). */
 
-// Varm, ljus gryningspalett (mjuk gräddvit bakgrund med varma accenter): ljusare och tydligare än den
-// tidigare natt-versionen, men samma organiska själ. Accentfärgerna är fördjupade så att de håller
-// god läsbarhet (WCAG-kontrast) mot den ljusa bakgrunden.
-const D = {
-  ink: '#3b2f3a', inkSoft: '#6e6370', inkFaint: '#756a73',
-  gold: '#8f5820', amber: '#9a6820', roseGold: '#95502f', pink: '#9a3950',
-}
 const APP_URL = '/app/'   // bryggan till den kostnadsfria appen (samma domän)
-const COL = 880           // innehållets max-bredd: Leden (SVG) använder SAMMA centrerade spalt som <main>
 
-// Officiell statistik (BRÅ, Nationella trygghetsundersökningen). Bara headline-siffran är numerisk och
-// källsatt; de "dolda" raderna är kvalitativa konsekvenser (ingen påhittad procentsats), för ärlighets skull.
-const STATS = [
-  {
-    big: '≈ var tredje', accent: D.amber,
-    label: 'kvinna 16-29 år känner sig ganska eller mycket otrygg när hon är ute ensam sent på kvällen i sitt eget bostadsområde.',
-  },
-  {
-    big: 'Den dolda omvägen', accent: D.roseGold,
-    label: 'Otryggheten begränsar vardagen i tysthet: många väljer en längre, mer upplyst väg hem eller avstår helt från kvällspromenaden.',
-  },
-  {
-    big: 'Det osynliga arbetet', accent: D.pink,
-    label: 'Att hela tiden planera sin trygghet (nycklar i handen, dela sin position, ringa en vän) är ett mentalt arbete som sällan syns eller räknas.',
-  },
-]
+// Rosa familjen (spegel av CSS-variablerna i ideel.css, håll i synk): inline-stilar är spaltens
+// konvention. Kontrast mot cream: ink 6.4:1, soft 4.9:1, bright 4.1:1 (endast stor text),
+// neonText 3.3:1 (endast stora kursiva accentord), neon enbart för aria-hidden glöd/grafik.
+const P = {
+  cream: '#f7f1e6',
+  ink: '#a1235c',
+  soft: 'rgba(161,35,92,0.85)',
+  bright: '#d6336c',
+  neon: '#ff5fa2',
+  neonText: '#f03a82',
+  hairline: 'rgba(161,35,92,0.28)',
+}
+const serif = "'Fraunces', Georgia, 'Times New Roman', serif"
 
 export default function Ideel() {
-  const mainRef = useRef(null)
-  const formRef = useRef(null)
-  const [dim, setDim] = useState({ w: 0, h: 0 })
-
-  // Mät innehållets exakta mått så den slingrande Leden kan ritas oförvrängt bakom texten, och
-  // ritas om när höjden ändras (t.ex. formulärets tack-läge). ResizeObserver på själva innehållet
-  // (Leden ligger absolut och påverkar därför aldrig måttet -> ingen återkopplingsloop).
-  useEffect(() => {
-    const el = mainRef.current
-    if (!el) return
-    const measure = () => setDim({ w: el.offsetWidth, h: el.offsetHeight })
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
   return (
     <div style={{ position: 'relative', minHeight: '100vh' }}>
-      <AmbientAuras />
-      <WindingPath w={dim.w} h={dim.h} />
-      <main ref={mainRef} style={{ position: 'relative', zIndex: 1, maxWidth: COL, margin: '0 auto', padding: '0 clamp(18px, 5vw, 36px)' }}>
-        <Hero onShare={scrollToForm} />
-        <Stats />
-        <StoryConcept onShare={scrollToForm} />
-        <section ref={formRef} style={{ position: 'relative', padding: 'clamp(40px, 9vh, 92px) 0', scrollMarginTop: 24 }}>
-          <Glow color="rgba(233,150,178,0.26)" style={{ top: '6%', left: '50%', transform: 'translateX(-50%)', width: 'min(640px, 96%)', height: 560 }} />
-          <InterviewForm />
-        </section>
+      <TopNav />
+      <aside className="ideel-stage" aria-hidden="true">
+        <Suspense fallback={null}>
+          <Swarm />
+        </Suspense>
+        <HeartLogo />
+        <ExamineCue />
+      </aside>
+      <main className="ideel-main">
+        <Hero />
+        <Facts />
+        <Stories />
+        <About />
         <Footer />
       </main>
     </div>
   )
 }
 
-/* Stora, mycket diffusa ambient-auras: en mjuk, varm glöd som ramar in sidan utan att konkurrera med
-   texten. Fixed + pointerEvents:none + overflow-klippt behållare så de aldrig stör scroll eller klick. */
-function AmbientAuras() {
+/* Föreningens logotyp: det streckade neonhjärtat med pil nedåt, ritat i SVG (skarpt i alla storlekar)
+   och lagt som glödande kärna mitt i partikelvolymen. Konturen är en ÖPPEN hjärtbana vars spets
+   ersätts av en nedåtpil (chevron), plus den lilla strecksatsen i urringningen: samma mark som
+   favicon. Dasharray över pathLength ger de runda, jämnt fördelade strecken. */
+function HeartLogo({ size = 132 }) {
   return (
-    <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }}>
-      <div style={auraBase({ top: '-14%', left: '-6%', width: 560, height: 560, background: 'radial-gradient(circle, rgba(233,170,90,0.22), transparent 70%)' })} />
-      <div style={auraBase({ bottom: '-18%', right: '-10%', width: 620, height: 620, background: 'radial-gradient(circle, rgba(233,150,178,0.20), transparent 70%)', animationDelay: '2.5s' })} />
+    <div className="ideel-heart" aria-hidden="true" style={{
+      position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+      width: size, height: size, pointerEvents: 'none', zIndex: 2,
+    }}>
+      {/* mjuk gloria bakom märket så kärnan lyser ur volymen */}
+      <div style={{
+        position: 'absolute', inset: '-38%', borderRadius: '50%', pointerEvents: 'none',
+        background: 'radial-gradient(circle, rgba(255,95,162,0.20), rgba(255,95,162,0.07) 45%, transparent 70%)',
+        filter: 'blur(6px)',
+      }} />
+      <svg width={size} height={size} viewBox="0 0 100 100" fill="none" style={{ position: 'relative' }}>
+        <g stroke="#ff5fa2" strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round">
+          <path
+            d="M61 76 C78 63 92 52 92 36 C92 24 84 16 73 16 C62 16 53 24 50 31 C47 24 38 16 27 16 C16 16 8 24 8 36 C8 52 22 63 39 76"
+            pathLength="160" strokeDasharray="11 9.4" strokeDashoffset="-2.5"
+          />
+          <path d="M41 79 L50 87 L59 79" />
+          <path d="M50 37 L50 41.5" />
+        </g>
+      </svg>
     </div>
   )
 }
-const auraBase = (s) => ({ position: 'absolute', borderRadius: '50%', filter: 'blur(80px)', pointerEvents: 'none', animation: 'ideel-aura 11s ease-in-out infinite', ...s })
 
-// En sektionsbunden, mycket diffus glöd (en mjuk, varm ljuspöl) som ligger BAKOM ett textavsnitt.
-function Glow({ color, style }) {
+function TopNav() {
   return (
-    <div aria-hidden="true" style={{
-      position: 'absolute', zIndex: 0, borderRadius: '50%', filter: 'blur(90px)', pointerEvents: 'none',
-      background: `radial-gradient(circle, ${color}, transparent 70%)`, ...style,
-    }} />
-  )
-}
-
-/* Den slingrande, glödande Leden: en tunn roseguld/rosa-linje som ritas parametriskt (mjuk sinuskurva)
-   ner genom hela innehållets höjd, bakom texten. Längs den vandrar några små, subtila fotsteg som
-   tänds i tur och ordning. Allt i SVG (inga inline-script -> CSP-kompatibelt). */
-function WindingPath({ w, h }) {
-  if (!w || !h) return null
-  const cx = w / 2
-  const amp = Math.min(w * 0.16, 110)                       // hur mycket linjen svänger i sidled
-  const turns = Math.max(2.5, Math.round(h / 620) + 0.5)    // antal mjuka vågor utifrån sidans höjd
-  const fn = (t) => [cx + amp * Math.sin(t * Math.PI * turns), t * h]
-
-  const segs = Math.max(48, Math.min(180, Math.round(h / 22)))
-  let d = ''
-  for (let i = 0; i <= segs; i++) {
-    const [x, y] = fn(i / segs)
-    d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' '
-  }
-
-  // Fotsteg: alternerande vänster/höger om linjen, lätt roterade efter kurvans riktning.
-  const count = Math.max(6, Math.min(13, Math.round(h / 270)))
-  const feet = []
-  for (let i = 0; i < count; i++) {
-    const t = (i + 0.6) / count
-    const [x, y] = fn(t)
-    const [x2, y2] = fn(Math.min(1, t + 0.004))
-    const ang = Math.atan2(y2 - y, x2 - x)
-    const side = i % 2 === 0 ? 1 : -1
-    const px = x + Math.cos(ang + Math.PI / 2) * 8 * side
-    const py = y + Math.sin(ang + Math.PI / 2) * 8 * side
-    feet.push({ px, py, deg: (ang * 180) / Math.PI - 90, i })
-  }
-
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true"
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, margin: '0 auto', maxWidth: COL, width: '100%', height: h, zIndex: 0, pointerEvents: 'none' }}>
-      <defs>
-        <linearGradient id="ideel-led" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#c2873f" />
-          <stop offset="50%" stopColor="#bd7257" />
-          <stop offset="100%" stopColor="#cf5e82" />
-        </linearGradient>
-        <filter id="ideel-led-blur" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="3.4" />
-        </filter>
-      </defs>
-      {/* mjukt glödlager (suddigt, brett) + hårfin kärna */}
-      <path className="ideel-led-glow" d={d} fill="none" stroke="url(#ideel-led)" strokeWidth="5" strokeLinecap="round" filter="url(#ideel-led-blur)" />
-      <path d={d} fill="none" stroke="url(#ideel-led)" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-      {feet.map((f) => (
-        <g key={f.i} className="ideel-step" style={{ animationDelay: (f.i * 0.3) + 's' }}
-          transform={`translate(${f.px.toFixed(1)} ${f.py.toFixed(1)}) rotate(${f.deg.toFixed(1)})`}>
-          <ellipse cx="0" cy="0" rx="2.2" ry="4.3" fill="#bd7450" />
-          <circle cx="0" cy="-4.7" r="1.2" fill="#bd7450" />
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-function Hero({ onShare }) {
-  return (
-    <header style={{ position: 'relative', zIndex: 1, textAlign: 'center', paddingTop: 'clamp(74px, 14vh, 144px)', paddingBottom: 'clamp(28px, 6vh, 60px)' }}>
-      <Flourish id="fl-hero" mb={22} />
-      <h1 style={{ ...softHeading, fontSize: 'clamp(34px, 6.6vw, 62px)', margin: '0 0 20px' }}>
-        Vi ger röst åt de tysta
-      </h1>
-      <p style={{ ...lead, margin: '0 auto 14px', maxWidth: 620 }}>
-        En gemenskap som lyssnar på unga kvinnors dolda otrygghet i vardagen och lyfter den med värme och
-        respekt. Din berättelse kan göra någon annans väg hem tryggare.
-      </p>
-      <p style={{ fontSize: 14.5, color: D.inkFaint, maxWidth: 580, margin: '0 auto 32px', lineHeight: 1.65 }}>
-        Vi samlar in upplevelser för att synliggöra ett tyst problem, helt utan vinstintresse, och visar
-        vägen till vår kostnadsfria trygghetsapp.
-      </p>
-      <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <button onClick={onShare} className="ideel-btn ideel-btn--primary">Dela din berättelse</button>
-        <a href={APP_URL} className="ideel-btn ideel-btn--ghost">Öppna appen</a>
+    <nav className="ideel-nav" aria-label="Huvudmeny">
+      <a href="/ideel/" style={{ fontFamily: serif, fontStyle: 'italic', fontWeight: 600, fontSize: 22, color: P.bright, textDecoration: 'none', letterSpacing: 0.2, textShadow: '0 0 18px rgba(255,95,162,0.35)' }}>
+        LedMig
+      </a>
+      <div className="ideel-nav-links">
+        <a className="ideel-navlink" href="#facts">Fakta</a>
+        <a className="ideel-navlink" href="#stories">Berättelser</a>
+        <a className="ideel-navlink" href="#about">Om oss</a>
       </div>
+      <a className="ideel-pill" href={APP_URL}>Skaffa appen</a>
+    </nav>
+  )
+}
+
+// Planschens vertikala visare i scenens nederkant (som uppslagets "scroll to examine").
+function ExamineCue() {
+  return (
+    <div aria-hidden="true" style={{ position: 'absolute', right: 'clamp(14px, 2vw, 26px)', bottom: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, zIndex: 2 }}>
+      <span style={{ fontFamily: 'var(--mono)', fontSize: 9.5, fontWeight: 500, letterSpacing: '0.3em', textTransform: 'uppercase', color: P.soft, writingMode: 'vertical-rl' }}>
+        Scrolla för att utforska
+      </span>
+      <span className="ideel-scrollcue" style={{ width: 1, height: 42, background: P.bright, display: 'block' }} />
+    </div>
+  )
+}
+
+function Hero() {
+  return (
+    <header className="ideel-rise ideel-hero">
+      <div className="ideel-label" style={{ marginBottom: 'clamp(26px, 4.5vh, 46px)' }}>
+        LedMig · Ideell förening · 2026
+      </div>
+      <h1 style={{ fontFamily: serif, fontVariationSettings: "'opsz' 144", fontWeight: 480, fontSize: 'clamp(46px, 6.4vw, 96px)', lineHeight: 1.02, letterSpacing: '-0.015em', color: P.bright, margin: '0 0 clamp(22px, 4vh, 38px)' }}>
+        Ge röst<br />
+        <em style={{ fontStyle: 'italic', fontWeight: 440, color: P.neonText, textShadow: '0 0 30px rgba(255,95,162,0.35)' }}>åt de tysta</em>
+      </h1>
+      <p style={{ fontFamily: serif, fontVariationSettings: "'opsz' 40", fontWeight: 430, fontSize: 'clamp(17px, 1.7vw, 21px)', lineHeight: 1.55, color: P.ink, maxWidth: 520, margin: 0 }}>
+        En gemenskap som lyssnar på unga kvinnors dolda otrygghet i vardagen och lyfter den med
+        värme och respekt. Din berättelse kan göra någon annans väg hem tryggare.
+      </p>
     </header>
   )
 }
 
-function Stats() {
+/* 3-spaltsmodulen med vardagsfakta (planschens "context · output · thinking"-rad, men som
+   innehållsbärare). Bara kolumn 1 har en numerisk headline; den är källsatt mot BRÅ/NTU nedanför. */
+const FACTS = [
+  {
+    heading: 'Otryggheten är verklig',
+    big: '≈ var tredje',
+    body: 'kvinna 16-29 år känner sig ganska eller mycket otrygg när hon är ute ensam sent på kvällen i sitt eget bostadsområde.',
+  },
+  {
+    heading: 'Den dolda omvägen',
+    body: 'Otryggheten begränsar vardagen i tysthet: många väljer en längre, mer upplyst väg hem eller avstår helt från kvällspromenaden.',
+  },
+  {
+    heading: 'Det osynliga arbetet',
+    body: 'Att hela tiden planera sin trygghet (nycklar i handen, dela sin position, ringa en vän) är ett mentalt arbete som sällan syns eller räknas.',
+  },
+]
+
+function Facts() {
   return (
-    <section style={{ position: 'relative', padding: 'clamp(38px, 8vh, 84px) 0' }} aria-labelledby="stats-rubrik">
-      {/* trygg, belyst zon: en mjuk bärnstens/guldig glöd bakom statistiken */}
-      <Glow color="rgba(233,170,90,0.28)" style={{ top: '14%', left: '50%', transform: 'translateX(-50%)', width: 'min(720px, 98%)', height: 520 }} />
-      <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 'clamp(28px, 5vh, 52px)' }}>
-        <Eyebrow center>Faktabaserat: så ser vardagen ut</Eyebrow>
-        <h2 id="stats-rubrik" style={softHeading}>Otryggheten är verklig, och ofta osynlig</h2>
-        <p style={{ ...lead, margin: '10px auto 0' }}>Bakom siffrorna finns vardagliga val som krymper friheten. Här är några av dem.</p>
+    <section id="facts" aria-labelledby="facts-label" style={{ padding: 'clamp(36px, 7vh, 76px) 0', scrollMarginTop: 40 }}>
+      <h2 className="ideel-label" id="facts-label" style={{ marginBottom: 'clamp(28px, 5vh, 48px)' }}>
+        Faktabaserat: så ser vardagen ut
+      </h2>
+      <div className="ideel-facts-grid">
+        {FACTS.map((f) => (
+          <article key={f.heading} style={{ borderTop: `1px solid ${P.hairline}`, paddingTop: 18 }}>
+            <h3 style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: P.soft, margin: '0 0 12px' }}>
+              {f.heading}
+            </h3>
+            {f.big && (
+              <div style={{ fontFamily: serif, fontStyle: 'italic', fontVariationSettings: "'opsz' 100", fontWeight: 500, fontSize: 'clamp(24px, 2.4vw, 32px)', lineHeight: 1.1, color: P.bright, marginBottom: 10, textShadow: '0 0 22px rgba(255,95,162,0.25)' }}>
+                {f.big}
+              </div>
+            )}
+            <p style={{ fontSize: 14.5, lineHeight: 1.65, color: P.ink, margin: 0 }}>{f.body}</p>
+          </article>
+        ))}
       </div>
-
-      {STATS.map((s, i) => (
-        <FlowBlock key={i} align={i % 2 === 0 ? 'left' : 'right'}>
-          <div style={{ fontSize: 'clamp(27px, 4.6vw, 42px)', fontWeight: 800, color: s.accent, lineHeight: 1.05, marginBottom: 8, filter: `drop-shadow(0 0 22px ${s.accent}44)` }}>{s.big}</div>
-          <div style={{ fontSize: 'clamp(15px, 2.2vw, 17.5px)', color: D.inkSoft, lineHeight: 1.6 }}>{s.label}</div>
-        </FlowBlock>
-      ))}
-
-      <p style={{ position: 'relative', zIndex: 1, fontSize: 12.5, color: D.inkSoft, textAlign: 'center', maxWidth: 600, margin: '8px auto 0', lineHeight: 1.6 }}>
-        Källa: BRÅ, Nationella trygghetsundersökningen (NTU). Siffran avser andelen som känner sig
-        ganska eller mycket otrygga utomhus ensam sen kväll i det egna bostadsområdet.
+      <p style={{ fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.06em', color: P.soft, margin: '26px 0 0' }}>
+        Källa: BRÅ, Nationella trygghetsundersökningen (NTU).
       </p>
     </section>
   )
 }
 
-function StoryConcept({ onShare }) {
-  const points = [
-    { title: 'Vi lyssnar', text: 'Du delar din upplevelse genom en anonym eller öppen intervju. Du bestämmer själv hur mycket du vill berätta.' },
-    { title: 'Vi synliggör', text: 'Med din tillåtelse använder vi insikterna för att lyfta problemet och sprida medvetenhet, alltid med värdighet.' },
-    { title: 'Vi visar vägen', text: 'Berättelserna pekar mot LedMig: en helt kostnadsfri trygghetsapp utan dolda kostnader eller vinstintressen.' },
-  ]
+function Stories() {
   return (
-    <section style={{ position: 'relative', padding: 'clamp(38px, 8vh, 84px) 0' }} aria-labelledby="story-rubrik">
-      <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 'clamp(28px, 5vh, 52px)' }}>
-        <Eyebrow center>Berättelser och intervjuer</Eyebrow>
-        <h2 id="story-rubrik" style={softHeading}>Din röst, på dina villkor</h2>
-        <p style={{ ...lead, margin: '10px auto 0' }}>
-          Föreningen samlar in tjejers och unga kvinnors berättelser för att göra en tyst otrygghet synlig.
-          Allt sker transparent: du väljer själv om du vill vara anonym, och inget delas utan ditt samtycke.
-        </p>
-      </div>
+    <section id="stories" aria-labelledby="stories-label" style={{ padding: 'clamp(36px, 7vh, 76px) 0', scrollMarginTop: 40 }}>
+      <h2 className="ideel-label" id="stories-label" style={{ marginBottom: 'clamp(28px, 5vh, 48px)' }}>
+        Berättelser och intervjuer
+      </h2>
+      <h3 style={{ fontFamily: serif, fontVariationSettings: "'opsz' 144", fontWeight: 480, fontSize: 'clamp(32px, 3.6vw, 52px)', lineHeight: 1.08, letterSpacing: '-0.01em', color: P.bright, margin: '0 0 20px' }}>
+        Din röst, <em style={{ fontWeight: 440, color: P.neonText, textShadow: '0 0 26px rgba(255,95,162,0.3)' }}>på dina villkor</em>
+      </h3>
+      <p style={{ fontSize: 'clamp(15px, 1.5vw, 16.5px)', lineHeight: 1.7, color: P.ink, maxWidth: 560, margin: '0 0 clamp(34px, 6vh, 58px)' }}>
+        Vi samlar in tjejers och unga kvinnors berättelser för att göra en tyst otrygghet synlig. 
+        Allt sker transparent: du väljer själv om du vill vara anonym, och inget delas utan ditt 
+        samtycke. Vi använder insikterna för att lyfta problemet och sprida medvetenhet, alltid 
+        med värdighet.
+      </p>
 
-      {points.map((p, i) => {
-        const align = i % 2 === 0 ? 'right' : 'left'
-        return (
-          <FlowBlock key={i} align={align}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexDirection: align === 'right' ? 'row-reverse' : 'row', marginBottom: 6 }}>
-              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: D.roseGold, boxShadow: `0 0 10px ${D.roseGold}`, flex: '0 0 8px' }} />
-              <h3 style={{ fontSize: 'clamp(19px, 3vw, 24px)', fontWeight: 800, color: D.ink, margin: 0 }}>{p.title}</h3>
-            </div>
-            <p style={{ fontSize: 'clamp(14.5px, 2.1vw, 16.5px)', color: D.inkSoft, lineHeight: 1.6, margin: 0 }}>{p.text}</p>
-          </FlowBlock>
-        )
-      })}
-
-      {/* Transparensen om att appen är HELT kostnadsfri: fritt flytande, ingen box. */}
-      <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 640, margin: '12px auto 0' }}>
-        <p style={{ fontSize: 'clamp(16px, 2.4vw, 19px)', color: D.inkSoft, lineHeight: 1.65 }}>
-          <b style={{ color: D.gold }}>Helt kostnadsfritt:</b> appen LedMig finansieras ideellt och har inga
-          dolda avgifter, ingen reklam och inga kommersiella vinstintressen.
+      <div style={{ borderTop: `1px solid ${P.hairline}`, paddingTop: 'clamp(26px, 4vh, 40px)' }}>
+        {/* min 24px: under det räknas #d6336c inte som "stor text" i WCAG och kontrasten faller */}
+        <h4 style={{ fontFamily: serif, fontStyle: 'italic', fontVariationSettings: "'opsz' 80", fontWeight: 480, fontSize: 'clamp(24px, 2.2vw, 28px)', lineHeight: 1.25, color: P.bright, margin: '0 0 12px' }}>
+          Bli intervjuad eller dela din berättelse
+        </h4>
+        <p style={{ fontSize: 14.5, lineHeight: 1.65, color: P.soft, maxWidth: 540, margin: '0 0 28px' }}>
+          Lämna gärna en e-post om du vill bli kontaktad. Vill du vara anonym? Lämna namn 
+          och e-post tomma och berätta bara det du vill dela.
         </p>
-        <button onClick={onShare} className="ideel-btn ideel-btn--primary" style={{ marginTop: 20 }}>Jag vill dela min story</button>
+        <StoryForm />
       </div>
     </section>
   )
 }
 
-function InterviewForm() {
+function StoryForm() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [consent, setConsent] = useState(false)
   const [company, setCompany] = useState('') // honeypot: människor ser inte fältet, bottar fyller i det
   const [state, setState] = useState('idle') // idle | sending | done
-  const [err, setErr] = useState('')
+  const [err, setErr] = useState(null)       // { field: 'message'|'email'|'consent'|null, msg } | null
+  const doneRef = useRef(null)
+
+  // Tack-läget ersätter hela formuläret (inklusive den fokuserade knappen): flytta fokus till
+  // bekräftelsen så tangentbords- och skärmläsaranvändare inte tappas på body (WCAG 2.4.3).
+  useEffect(() => {
+    if (state === 'done') doneRef.current?.focus()
+  }, [state])
+
+  // aria-invalid/aria-describedby bara på det fält som felet faktiskt gäller.
+  const errProps = (field) =>
+    err && err.field === field ? { 'aria-invalid': true, 'aria-describedby': 'ideel-form-err' } : {}
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -270,11 +238,11 @@ function InterviewForm() {
     if (company) { setState('done'); return } // honeypot ifyllt: låtsas lyckas (avslöja inte fällan), spara inget
     const v = validateInterview({ email, message, consent })
     if (v) { setErr(v); return }
-    setErr(''); setState('sending')
+    setErr(null); setState('sending')
     const { error } = await submitInterview({ name, email, message, consent })
     if (error) {
       setState('idle')
-      setErr('Det gick tyvärr inte att skicka just nu. Försök igen, eller mejla oss på info@ledmig.nu.')
+      setErr({ field: null, msg: 'Något gick fel vid skickandet. Försök igen, eller mejla oss på info@ledmig.nu.' })
       return
     }
     setState('done')
@@ -282,148 +250,91 @@ function InterviewForm() {
 
   if (state === 'done') {
     return (
-      <div className="ideel-rise" style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: 520, margin: '0 auto', padding: '30px 0' }}>
-        <Flourish id="fl-done" mb={16} />
-        <h2 style={{ ...softHeading, marginBottom: 10 }}>Tack för att du delar</h2>
-        <p style={{ ...lead, margin: '0 auto' }}>
-          Vi har tagit emot din anmälan och hör av oss om du lämnat en e-post. Din röst gör skillnad.
+      <div className="ideel-rise" role="status" style={{ padding: '10px 0 16px' }}>
+        <p ref={doneRef} tabIndex={-1} style={{ fontFamily: serif, fontStyle: 'italic', fontVariationSettings: "'opsz' 80", fontWeight: 480, fontSize: 'clamp(24px, 2.2vw, 28px)', color: P.bright, margin: '0 0 10px', outline: 'none' }}>
+          Tack för att du delar med dig
+        </p>
+        <p style={{ fontSize: 15, lineHeight: 1.65, color: P.ink, maxWidth: 480, margin: 0 }}>
+          Vi har tagit emot din berättelse och hör av oss om du lämnade en e-post. Din röst gör skillnad.
         </p>
       </div>
     )
   }
 
   return (
-    <div style={{ position: 'relative', zIndex: 1, maxWidth: 560, margin: '0 auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: 'clamp(20px, 4vh, 34px)' }}>
-        <Eyebrow center>Anmäl dig</Eyebrow>
-        <h2 style={softHeading}>Bli intervjuad eller dela din berättelse</h2>
-        <p style={{ ...lead, margin: '10px auto 0' }}>
-          Lämna gärna en e-post om du vill bli kontaktad. Vill du vara anonym? Lämna namn och e-post tomma
-          och berätta bara det du vill dela.
-        </p>
+    <form onSubmit={onSubmit} noValidate style={{ position: 'relative', maxWidth: 560 }}>
+      {/* honeypot: dolt för människor (aria-hidden + utanför tab), fångar enkla bottar */}
+      <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }}>
+        <label>Lämna detta fält tomt
+          <input type="text" tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} />
+        </label>
       </div>
 
-      <form onSubmit={onSubmit} noValidate style={{ position: 'relative' }}>
-        {/* honeypot: dolt för människor (aria-hidden + utanför tab), fångar enkla bottar */}
-        <div aria-hidden="true" style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }}>
-          <label>Lämna tomt
-            <input type="text" tabIndex={-1} autoComplete="off" value={company} onChange={(e) => setCompany(e.target.value)} />
-          </label>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-          <Field label="Namn (valfritt: lämna tomt för anonymt)">
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={200}
-              aria-required="false" placeholder="Ditt namn eller alias" style={inp} autoComplete="name" />
-          </Field>
-          <Field label="E-post (valfritt: behövs bara om du vill bli kontaktad)">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={320}
-              aria-required="false" placeholder="namn@exempel.se" style={inp} autoComplete="email" />
-          </Field>
-        </div>
-
-        <Field label="Din berättelse eller fråga">
-          <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} maxLength={4000}
-            aria-required="true" aria-invalid={!!err} aria-describedby={err ? 'ideel-form-err' : undefined}
-            placeholder="Berätta så mycket eller lite du vill. Vad gör dig otrygg i vardagen? Vad skulle hjälpa?"
-            style={{ ...inp, resize: 'vertical', minHeight: 116 }} />
-        </Field>
-
-        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 11, cursor: 'pointer', margin: '4px 0 2px' }}>
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} aria-required="true" style={{ marginTop: 3, accentColor: D.pink }} />
-          <span style={{ fontSize: 13, color: D.inkSoft, lineHeight: 1.5 }}>
-            Jag samtycker till att föreningen lagrar min berättelse och eventuell kontaktuppgift säkert,
-            och endast använder dem inom föreningens arbete. Jag kan när som helst be om att få mina
-            uppgifter raderade.
-          </span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'clamp(18px, 2vw, 28px)', marginBottom: 24 }}>
+        <label style={{ display: 'block' }}>
+          <span className="ideel-field-label">Namn (frivilligt)</span>
+          <input className="ideel-input" type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={200}
+            aria-required="false" placeholder="Ditt namn eller alias" autoComplete="name" />
         </label>
+        <label style={{ display: 'block' }}>
+          <span className="ideel-field-label">E-postadress (frivilligt)</span>
+          <input className="ideel-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={320}
+            aria-required="false" placeholder="namn@exempel.se" autoComplete="email" {...errProps('email')} />
+        </label>
+      </div>
 
-        {err && <div id="ideel-form-err" role="alert" style={{ fontSize: 13, color: '#c2354f', marginTop: 6 }}>{err}</div>}
+      <label style={{ display: 'block', marginBottom: 22 }}>
+        <span className="ideel-field-label">Din berättelse</span>
+        <textarea className="ideel-input" value={message} onChange={(e) => setMessage(e.target.value)} rows={5} maxLength={4000}
+          aria-required="true" {...errProps('message')}
+          placeholder="Berätta så mycket eller lite du vill. Vad får dig att känna dig otrygg i vardagen? Vad skulle hjälpa?" />
+      </label>
 
-        <button type="submit" disabled={state === 'sending'} className="ideel-btn ideel-btn--primary" style={{ width: '100%', marginTop: 18 }}>
-          {state === 'sending' ? 'Skickar…' : 'Skicka in'}
-        </button>
-        <p style={{ fontSize: 11.5, color: D.inkFaint, marginTop: 14, lineHeight: 1.55, textAlign: 'center' }}>
-          Dina uppgifter skickas krypterat och lagras med strikt åtkomstkontroll (kan inte läsas publikt).
-          Vi sparar bara det du fyller i, inget mer.
-        </p>
-      </form>
-    </div>
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 11, cursor: 'pointer', margin: '0 0 6px' }}>
+        <input type="checkbox" className="ideel-check" checked={consent} onChange={(e) => setConsent(e.target.checked)}
+          aria-required="true" style={{ marginTop: 3 }} {...errProps('consent')} />
+        <span style={{ fontSize: 13, color: P.soft, lineHeight: 1.55 }}>
+          Jag samtycker till att föreningen sparar min berättelse och eventuella kontaktuppgifter säkert, 
+          och att de endast används inom föreningens arbete. Jag kan när som helst be att få min data raderad.
+        </span>
+      </label>
+
+      {err && <div id="ideel-form-err" role="alert" style={{ fontSize: 13, fontWeight: 700, color: P.ink, marginTop: 10 }}>{err.msg}</div>}
+
+      <button type="submit" disabled={state === 'sending'} className="ideel-btn ideel-btn--primary" style={{ marginTop: 24 }}>
+        {state === 'sending' ? 'Skickar…' : 'Dela min berättelse'}
+      </button>
+      <p style={{ fontSize: 11.5, color: P.soft, marginTop: 16, lineHeight: 1.55, maxWidth: 480 }}>
+        Dina uppgifter skickas krypterat och lagras med strikt behörighetskontroll (de kan inte läsas 
+        offentligt). Vi sparar bara det du fyller i, inget annat.
+      </p>
+    </form>
+  )
+}
+
+function About() {
+  return (
+    <section id="about" aria-labelledby="about-label" style={{ padding: 'clamp(36px, 7vh, 76px) 0 clamp(44px, 8vh, 90px)', scrollMarginTop: 40 }}>
+      <h2 className="ideel-label" id="about-label" style={{ marginBottom: 'clamp(28px, 5vh, 48px)' }}>
+        Om appen LedMig
+      </h2>
+      <p style={{ fontFamily: serif, fontVariationSettings: "'opsz' 60", fontWeight: 440, fontSize: 'clamp(19px, 2vw, 25px)', lineHeight: 1.5, color: P.ink, maxWidth: 560, margin: '0 0 30px' }}>
+        Berättelserna pekar mot LedMig: en helt kostnadsfri trygghetsapp utan dolda kostnader, ingen reklam och inga kommersiella vinstintressen. Finansieras ideellt.
+      </p>
+      <a className="ideel-btn ideel-btn--ghost" href={APP_URL}>Skaffa appen</a>
+    </section>
   )
 }
 
 function Footer() {
   return (
-    <footer style={{ position: 'relative', zIndex: 1, padding: '50px 0 64px', textAlign: 'center', color: D.inkFaint }}>
-      <div aria-hidden="true" style={{ width: 60, height: 1, margin: '0 auto 26px', background: `linear-gradient(90deg, transparent, ${D.roseGold}66, transparent)` }} />
-      <div style={{ fontSize: 16, fontWeight: 800, color: D.ink, marginBottom: 8, letterSpacing: 0.3 }}>LedMig</div>
-      <p style={{ fontSize: 13.5, color: D.inkSoft, maxWidth: 480, margin: '0 auto 18px', lineHeight: 1.65 }}>
-        Den ideella föreningen och appen hör ihop: berättelserna visar vägen, appen hjälper dig hem.
-        Helt kostnadsfritt.
-      </p>
-      <div style={{ display: 'flex', gap: 18, justifyContent: 'center', flexWrap: 'wrap', fontSize: 13.5, fontWeight: 700 }}>
-        <a href={APP_URL} style={{ color: D.gold, textDecoration: 'none' }}>Öppna appen</a>
-        <a href="/" style={{ color: D.inkSoft, textDecoration: 'none' }}>Till ledmig.nu</a>
-        <a href="mailto:info@ledmig.nu" style={{ color: D.inkSoft, textDecoration: 'none' }}>info@ledmig.nu</a>
+    <footer style={{ borderTop: `1px solid ${P.hairline}`, padding: '30px 0 56px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap' }}>
+      <span style={{ fontFamily: serif, fontStyle: 'italic', fontWeight: 600, fontSize: 19, color: P.bright }}>LedMig</span>
+      <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap', fontFamily: 'var(--mono)', fontSize: 10.5, letterSpacing: '0.18em', textTransform: 'uppercase' }}>
+        <a href={APP_URL} style={{ color: P.ink, textDecoration: 'none' }}>Skaffa appen</a>
+        <a href="/" style={{ color: P.soft, textDecoration: 'none' }}>ledmig.nu</a>
+        <a href="mailto:info@ledmig.nu" style={{ color: P.soft, textDecoration: 'none' }}>info@ledmig.nu</a>
       </div>
     </footer>
-  )
-}
-
-/* ── små delkomponenter + delade stilar ─────────────────────────────────────── */
-// Fritt flytande textblock som turas om att luta åt vänster/höger sida, så den slingrande Leden
-// väver sig mellan dem. På smala skärmar blir blocken nästan helbreda och väven mjuknar naturligt.
-function FlowBlock({ align = 'center', children }) {
-  const s = { position: 'relative', zIndex: 1, maxWidth: 'min(440px, 84%)', marginBottom: 'clamp(34px, 7vh, 74px)' }
-  if (align === 'left') { s.marginRight = 'auto'; s.marginLeft = 0; s.textAlign = 'left' }
-  else if (align === 'right') { s.marginLeft = 'auto'; s.marginRight = 0; s.textAlign = 'right' }
-  else { s.margin = '0 auto'; s.textAlign = 'center' }
-  return <div className="ideel-rise" style={s}>{children}</div>
-}
-
-const Eyebrow = ({ children, center }) => (
-  <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: 1.6, textTransform: 'uppercase', color: D.roseGold, marginBottom: 12, textAlign: center ? 'center' : 'left' }}>{children}</div>
-)
-const Field = ({ label, children }) => (
-  <label style={{ display: 'block', marginBottom: 16 }}>
-    <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: D.inkSoft, marginBottom: 7 }}>{label}</span>
-    {children}
-  </label>
-)
-
-// Mjuk, varm rubrik: text-transparent gradient (guld -> roseguld -> rosa) med en hårfin glöd.
-const softHeading = {
-  // Stora titlar i Fraunces (mjuk, varm display-serif) med hög optisk storlek för en handgjord känsla.
-  fontFamily: "'Fraunces', Georgia, 'Times New Roman', serif",
-  fontVariationSettings: "'opsz' 144",
-  fontSize: 'clamp(24px, 4.4vw, 36px)', fontWeight: 800, lineHeight: 1.14, margin: 0, letterSpacing: 0.2,
-  // Mörkare, varma toningar (guld -> roseguld -> ros) så rubriken är mjuk MEN tydligt läsbar mot ljust (WCAG AA).
-  background: 'linear-gradient(104deg, #8f5820, #984f3a 48%, #9a3556)',
-  WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
-  filter: 'drop-shadow(0 2px 8px rgba(176,106,72,0.14))',
-}
-const lead = { fontSize: 'clamp(15px, 2.2vw, 17px)', color: D.inkSoft, lineHeight: 1.65, maxWidth: 640 }
-// Sömlösa fält: hårfin roseguld-ram + lätt genomskinlig vit bakgrund som smälter in i den ljusa ytan.
-// UI-text i Nunito (inte sidans Shantell-handstil) för skärpa när man fyller i formuläret.
-const inp = {
-  width: '100%', padding: '13px 15px', borderRadius: 14, fontSize: 15, color: D.ink,
-  fontFamily: "'Nunito', system-ui, sans-serif",
-  background: 'rgba(255,255,255,0.6)', border: '1px solid #95502f', outline: 'none',
-}
-
-// Liten, handritad swash-flourish (SVG, inget emoji): en mjuk våg i guld -> ros som knyter an till Leden.
-function Flourish({ id, mb = 18 }) {
-  return (
-    <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'center', marginBottom: mb }}>
-      <svg width="66" height="18" viewBox="0 0 66 18" fill="none">
-        <defs>
-          <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#c2873f" /><stop offset="100%" stopColor="#cf5e82" />
-          </linearGradient>
-        </defs>
-        <path d="M2 12 C 15 12, 17 5, 25 5 C 32 5, 32 12, 40 12 C 49 12, 51 5, 64 5"
-          stroke={`url(#${id})`} strokeWidth="2" strokeLinecap="round" />
-      </svg>
-    </div>
   )
 }

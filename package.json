@@ -16,7 +16,8 @@
     "react-dom": "18.3.1",
     "react-markdown": "^9.1.0",
     "reactflow": "^11.11.4",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "three": "^0.184.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",

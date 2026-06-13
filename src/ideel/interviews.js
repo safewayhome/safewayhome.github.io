@@ -17,16 +17,21 @@ const MAX = { name: 200, email: 320, message: 4000 }
 // Enkel, tillåtande e-postkontroll (klientsidan är bekvämlighet: RLS + längdtak är den verkliga gränsen).
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Felmeddelandena är engelska: hela /ideel-sidan är på engelska sedan omdesignen.
+// Returnerar { field, msg } (eller null) så formuläret kan sätta aria-invalid på RÄTT fält
+// i stället för att alltid peka ut berättelsefältet. Enbart blanksteg i e-postfältet
+// behandlas som tomt (sparas ändå som null av submitInterview).
 export function validateInterview({ email, message, consent }) {
   const msg = (message || '').trim()
-  if (msg.length < 5) return 'Skriv gärna någon rad om vad du vill dela eller fråga.'
-  if (email && !EMAIL_RE.test(email.trim())) return 'Dubbelkolla e-postadressen (eller lämna fältet tomt).'
-  if (!consent) return 'Vi behöver ditt samtycke för att få spara och kontakta dig.'
+  if (msg.length < 5) return { field: 'message', msg: 'Please write a line or two about what you wish to share or ask.' }
+  const em = (email || '').trim()
+  if (em && !EMAIL_RE.test(em)) return { field: 'email', msg: 'Please double-check the email address (or leave the field blank).' }
+  if (!consent) return { field: 'consent', msg: 'We need your consent to store your story and contact you.' }
   return null
 }
 
 export async function submitInterview({ name, email, message, consent }) {
-  if (!supabase) return { error: 'Ingen anslutning just nu. Försök igen om en stund.' }
+  if (!supabase) return { error: 'No connection right now. Please try again in a moment.' }
   const row = {
     name: (name || '').trim().slice(0, MAX.name) || null,
     email: (email || '').trim().slice(0, MAX.email) || null,
@@ -38,6 +43,6 @@ export async function submitInterview({ name, email, message, consent }) {
     if (error) return { error: error.message }
     return { error: null }
   } catch (e) {
-    return { error: e.message || 'Något gick fel. Försök igen.' }
+    return { error: e.message || 'Something went wrong. Please try again.' }
   }
 }

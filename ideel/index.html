@@ -1,24 +1,29 @@
 <!doctype html>
-<html lang="sv">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <!-- OWASP A05/A03 (Content-Security-Policy): samma strikta policy som tavlan. script-src 'self'
-         (bygget har inga inline-script), style-src 'unsafe-inline' krävs av React-inline-stilar + Google
-         Fonts, connect-src https tillåter Supabase REST (formuläret), form-action 'self'. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; form-action 'self'" />
-    <title>LedMig: Ideell förening: ge röst åt de tysta</title>
-    <meta name="description" content="En ideell förening som ger röst åt unga kvinnors dolda otrygghet i vardagen, samlar in berättelser med respekt och visar vägen till den helt kostnadsfria trygghetsappen LedMig." />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10z' fill='%23c25a52'/></svg>" />
+    <!-- OWASP A05/A03 (Content-Security-Policy): samma strikta grund som tavlan. script-src 'self'
+         (three.js bundlas via Vite, inga inline-script), style-src 'unsafe-inline' krävs av React-inline-
+         stilar + Google Fonts, form-action 'self'. connect-src är åtstramad till exakt Supabase-värden
+         (håll i synk med src/supabaseClient.js): formuläret är sidans enda nätverksanrop, så injicerad
+         kod ska inte kunna posta data till godtycklig https-origin. OBS: frame-ancestors ignoreras i
+         meta-taggar per CSP-specen och står kvar som dokumentation: det verkliga clickjacking-skyddet
+         måste sättas som svarshuvud (Cloudflare response-header-regel framför GitHub Pages). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://ryctrgvoimxcwwxchhvi.supabase.co; form-action 'self'" />
+    <title>LedMig: Give Voice to the Silent</title>
+    <meta name="description" content="A non-profit community giving voice to the hidden insecurities of young women in everyday life. Share your story and discover LedMig: a completely free safety app with no ads and no profit interests." />
+    <!-- Favicon: föreningens logotyp, det streckade neonhjärtat med pil nedåt, i rosa. -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><g fill='none' stroke='%23ff5fa2' stroke-width='9' stroke-linecap='round' stroke-linejoin='round'><path d='M61 76 C78 63 92 52 92 36 C92 24 84 16 73 16 C62 16 53 24 50 31 C47 24 38 16 27 16 C16 16 8 24 8 36 C8 52 22 63 39 76' pathLength='160' stroke-dasharray='11 9.4'/><path d='M41 79 L50 87 L59 79'/><path d='M50 37 L50 41'/></g></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Titlar: Fraunces (mjuk, varm display-serif). Sidans text: Shantell Sans (handgjord, lekfull men
-         läsbar). Nunito behålls för UI (knappar/fält). Alla tre är OFL/fria för kommersiellt bruk med
-         fullt svenskt teckenstöd (åäö). -->
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..900&family=Nunito:wght@400;600;700;800&family=Shantell+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Typografi (editorialt boktryck, allt i rosa): Fraunces (elegant display-serif med hög optisk
+         storlek + kursiv) för rubriker, Karla (ren och mycket läsbar humanist-sans) för brödtext,
+         Spline Sans Mono för etiketter/nav i versaler med gles spärrning. Alla OFL/fria med åäö-stöd. -->
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Karla:ital,wght@0,400..700;1,400..700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   </head>
-  <!-- Ljus, varm bakgrund redan på body så sidan inte blixtrar innan React + CSS laddats. -->
-  <body style="margin:0;background:#fbf4ef">
+  <!-- Varm gräddvit bakgrund redan på body så sidan inte blixtrar innan React + CSS laddats. -->
+  <body style="margin:0;background:#f7f1e6">
     <div id="root"></div>
     <script type="module" src="/src/ideel/main.jsx"></script>
   </body>
