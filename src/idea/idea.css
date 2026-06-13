@@ -1,0 +1,370 @@
+/* Fristående stilbas för det interna brainstorm-verktyget /idea. Ärver /ideel-sidans editoriala
+   designspråk (gräddvit plansch, rosa bläckfamilj, hårfina linjer, mono-etiketter) men är ett
+   VERKTYG: hela ytan är en pannbar/zoombar karta, inte en scrollande sida.
+   FORMAT: aldrig AI-tankestreck som separator, alltid kolon (:). */
+
+:root {
+  color-scheme: light;
+  /* Grundtoner från /ideel (håll i synk med ideel.css). Kategorifärgerna är dämpade, editoriala
+     bläcktoner kalibrerade mot cream: alla -ink klarar 4.5:1 som text och tydligt över 3:1 som ram. */
+  --cream: #f7f1e6;
+  --ink: #a1235c;
+  --ink-soft: rgba(161, 35, 92, 0.85);
+  --bright: #d6336c;
+  --btn: #c92e64;
+  --neon: #ff5fa2;
+  --hairline: rgba(161, 35, 92, 0.28);
+  --hairline-strong: rgba(161, 35, 92, 0.65);
+  --paper: #fffdf7;
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'Karla', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Spline Sans Mono', 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; }
+
+body {
+  font-family: var(--sans);
+  background: var(--cream);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;   /* kartan pannas, sidan scrollar aldrig */
+}
+
+/* Pappersgryn över hela ytan (samma som /ideel): multiplicerande, mycket svagt.
+   z-index ÖVER alla paneler (96 > notisens 95): hela planschen, även chrome:t, delar samma
+   pappersyta, annars ser pillret och panelerna ut att ligga på ett annat material. */
+body::after {
+  content: '';
+  position: fixed; inset: 0; z-index: 96; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+  opacity: 0.05;
+}
+
+button, input { font-family: inherit; }
+::selection { background: rgba(255, 95, 162, 0.30); }
+
+button:focus-visible, a:focus-visible, input:focus-visible {
+  outline: 2px solid var(--bright);
+  outline-offset: 3px;
+}
+
+/* Skärmläsarrubrik (h1) utan visuell plats på planschen. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ── Kartytan ───────────────────────────────────────────────────────────────── */
+.idea-canvas {
+  position: fixed; inset: 0;
+  cursor: grab;
+  touch-action: none;       /* pekare sköter pan/drag/nyp själva: ingen webbläsargest får ta över */
+  user-select: none;
+  -webkit-user-select: none;
+  /* Prickraster som följer panoreringen (background-position sätts inline från React):
+     ger papperskänsla och gör rörelsen i kartan avläsbar. */
+  background-image: radial-gradient(circle, rgba(161, 35, 92, 0.13) 1px, transparent 1.1px);
+}
+.idea-canvas.is-panning { cursor: grabbing; }
+
+/* Världslagret transformeras med pan/zoom; allt i kartan ligger i världskoordinater. */
+.idea-world { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.idea-world > svg { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: visible; }
+
+/* ── Idéblocken ─────────────────────────────────────────────────────────────── */
+/* Vila = stilla papper (hårfin skugga, stram radie): kategorifärgad glöd FÅR bara markeringen
+   (sätts inline). Mjuka pastellhalos under alla kort i vila läser SaaS, inte plansch. */
+.idea-node {
+  position: absolute;
+  width: 212px;
+  transform: translate(-50%, -50%);
+  background: var(--paper);
+  border: 1.5px solid;            /* färgen sätts inline per kategori */
+  border-radius: 10px;
+  padding: 12px 12px 14px;
+  cursor: grab;
+  animation: idea-pop 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.idea-node:active { cursor: grabbing; }
+.idea-node.is-selected { border-width: 2px; }
+
+.idea-node-cat {
+  display: flex; align-items: center; gap: 7px;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.idea-node-cat .idea-dot { width: 7px; height: 7px; border-radius: 999px; flex: 0 0 7px; }
+
+.idea-node-title {
+  font-family: var(--serif); font-variation-settings: 'opsz' 40;
+  font-weight: 520; font-size: 17px; line-height: 1.25;
+  margin: 0; color: var(--ink);
+  overflow-wrap: break-word;
+}
+.idea-node-title-input {
+  width: 100%; font-family: var(--serif); font-variation-settings: 'opsz' 40;
+  font-weight: 520; font-size: 17px; line-height: 1.25; color: var(--ink);
+  background: transparent; border: none; border-bottom: 1px solid var(--hairline-strong);
+  padding: 0 0 2px; outline: none;
+}
+
+/* Bildkärnan: elegant centrerad, rundad och svagt inramad i bläck. */
+.idea-node-img {
+  position: relative;
+  margin: 2px 0 10px;
+  border-radius: 7px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  box-shadow: inset 0 0 0 1px rgba(161, 35, 92, 0.18);
+}
+.idea-node-img img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  pointer-events: none;   /* bilden får aldrig sno pekaren från blockdraget */
+}
+/* Ta bort-knappen ligger PÅ fotot: papper bakom krysset, annars försvinner det på mörka bilder. */
+.idea-node-img .idea-img-remove {
+  position: absolute; top: 6px; right: 6px;
+  background: rgba(255, 253, 247, 0.92);
+  border-color: var(--hairline-strong);
+  opacity: 0; transition: opacity 0.2s ease;
+}
+.idea-node:hover .idea-img-remove, .idea-node.is-selected .idea-img-remove,
+.idea-node:focus-within .idea-img-remove, .idea-img-remove:focus-visible { opacity: 1; }
+
+/* Verktygsraden i blocket: kategoriprickar + bild + radera. Syns vid hover/markering/fokus. */
+.idea-node-tools {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 11px; padding-top: 10px;
+  border-top: 1px solid rgba(161, 35, 92, 0.16);
+  opacity: 0; transition: opacity 0.2s ease;
+}
+.idea-node:hover .idea-node-tools, .idea-node.is-selected .idea-node-tools,
+.idea-node:focus-within .idea-node-tools { opacity: 1; }
+
+/* Prickarna är 15px visuellt men träffytan vidgas till 24px via ::after
+   (WCAG 2.5.8 Target Size utan att förstora den visuella rytmen). */
+.idea-catdot {
+  position: relative;
+  width: 15px; height: 15px; border-radius: 999px; border: none; cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 253, 247, 0.7);
+  transition: transform 0.15s ease;
+  padding: 0;
+}
+.idea-catdot::after { content: ''; position: absolute; inset: -4.5px; border-radius: 999px; }
+.idea-catdot:hover { transform: scale(1.25); }
+.idea-catdot.is-active { box-shadow: inset 0 0 0 1.5px rgba(255, 253, 247, 0.7), 0 0 0 2px currentColor; }
+
+.idea-tool {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 7px; border: 1px solid var(--hairline);
+  background: transparent; color: var(--ink); cursor: pointer; padding: 0;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+.idea-tool:hover { border-color: var(--bright); color: var(--bright); background: rgba(255, 95, 162, 0.08); }
+.idea-tool svg { display: block; }
+
+/* Länkringen: dras till ett annat block för att spinna en tråd i väven.
+   Tangentbordsvägen (Enter här + Enter på ett annat blocks ring) markerar källan med .is-linking. */
+.idea-port {
+  position: absolute; top: 50%; right: -11px; transform: translateY(-50%);
+  width: 18px; height: 18px; border-radius: 999px;
+  border: 2.5px solid;            /* kategori-bläck inline */
+  background: var(--paper);
+  cursor: crosshair; padding: 0;
+  opacity: 0; transition: opacity 0.2s ease, transform 0.15s ease;
+}
+.idea-port::after { content: ''; position: absolute; inset: -4px; border-radius: 999px; }
+.idea-node:hover .idea-port, .idea-node.is-selected .idea-port, .idea-port:focus-visible { opacity: 1; }
+.idea-port:hover { transform: translateY(-50%) scale(1.2); }
+.idea-port.is-linking {
+  opacity: 1; transform: translateY(-50%) scale(1.25);
+  box-shadow: 0 0 0 3px currentColor, 0 0 14px currentColor;
+}
+
+/* ── Paneler runt kartan ────────────────────────────────────────────────────── */
+.idea-topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px clamp(18px, 3vw, 34px);
+  pointer-events: none;            /* bara barnen tar klick: kartan kan pannas ända upp */
+}
+.idea-topbar > * { pointer-events: auto; }
+.idea-wordmark {
+  display: flex; align-items: baseline; gap: 12px; text-decoration: none;
+}
+.idea-wordmark b {
+  font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 20px;
+  color: var(--bright); letter-spacing: 0.2px;
+}
+.idea-wordmark span {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-soft);
+}
+
+.idea-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase; white-space: nowrap;
+  color: var(--cream); background: var(--btn);
+  padding: 11px 20px; border-radius: 999px; border: none; cursor: pointer;
+  box-shadow: 0 8px 22px rgba(214, 51, 108, 0.28);
+  transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.25s ease, background 0.25s ease;
+}
+.idea-pill:hover {
+  transform: translateY(-1px); background: #bd2a5e;
+  box-shadow: 0 12px 28px rgba(255, 95, 162, 0.4);
+}
+
+.idea-legend {
+  position: fixed; left: clamp(18px, 3vw, 34px); bottom: 18px; z-index: 90;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.idea-legend-row {
+  display: flex; align-items: center; gap: 9px;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-soft);
+}
+.idea-legend-row .idea-dot { width: 8px; height: 8px; border-radius: 999px; }
+
+.idea-hint {
+  position: fixed; right: clamp(18px, 3vw, 34px); bottom: 18px; z-index: 90;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-soft);
+  text-align: right; line-height: 2;
+  max-width: 46vw;
+}
+
+/* Tillfälligt meddelande (avvisad bildfil, länkningsläge): plansch-ton, inte alert-rött.
+   Alltid monterad (role=status måste finnas i DOM:en INNAN texten byts, annars hör
+   skärmläsare den aldrig): tom = osynlig via opacity, aldrig display:none.
+   Egen transform-transition i stället för idea-pop: keyframens translate(-50%,-50%)
+   skrev annars över pillrets translateX(-50%) och lyfte det en halv höjd. */
+.idea-notice {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 95;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--cream); background: var(--ink); padding: 9px 18px; border-radius: 999px;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.idea-notice[data-empty='true'] { opacity: 0; }
+
+/* Radera-knappen vid en markerad tråd. */
+.idea-edge-x {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 22px; height: 22px; border-radius: 999px; border: 1px solid var(--hairline-strong);
+  background: var(--paper); color: var(--ink); cursor: pointer; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.idea-edge-x:hover { border-color: var(--bright); color: var(--bright); }
+
+@keyframes idea-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+/* Paneler animeras utan center-transform */
+.idea-topbar, .idea-legend, .idea-hint { animation: idea-fade 0.5s ease both; }
+@keyframes idea-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Smal skärm: undertiteln och den långa bruksanvisningen får lämna plats åt kartan. */
+@media (max-width: 639px) {
+  .idea-wordmark span { display: none; }
+  .idea-hint { display: none; }
+}
+
+/* ── Toppbarens högersida: närvaro + lägg-till + konto ──────────────────────── */
+.idea-topbar-right { display: flex; align-items: center; gap: 12px; }
+
+/* Närvaro: synk-prick + avatarer för teamet som är inne just nu. */
+.idea-presence { display: flex; align-items: center; gap: 6px; }
+.idea-sync-dot {
+  width: 8px; height: 8px; border-radius: 999px; flex: 0 0 8px;
+  background: var(--hairline-strong);
+  box-shadow: 0 0 0 0 rgba(95,112,64,0);
+}
+.idea-sync-dot.is-on { background: #5f7040; box-shadow: 0 0 8px rgba(95,112,64,0.6); }
+.idea-avatar {
+  width: 24px; height: 24px; border-radius: 999px; margin-left: -6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--cream);
+  border: 1.5px solid var(--cream); box-shadow: 0 1px 4px rgba(161,35,92,0.2);
+}
+.idea-avatar:first-of-type { margin-left: 0; }
+.idea-avatar-more { background: var(--hairline-strong) !important; font-size: 9.5px; }
+
+/* Kontoknapp: inloggad = namn + grön prick, utloggad = uppmaning. */
+.idea-authchip {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+  color: var(--ink); background: transparent; cursor: pointer;
+  padding: 9px 14px; border-radius: 999px; border: 1px solid var(--hairline-strong);
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+}
+.idea-authchip:hover { border-color: var(--bright); color: var(--bright); }
+.idea-authchip-dot { width: 7px; height: 7px; border-radius: 999px; background: #5f7040; flex: 0 0 7px; box-shadow: 0 0 6px rgba(95,112,64,0.6); }
+.idea-authchip-out { color: var(--cream); background: var(--btn); border-color: var(--btn); }
+.idea-authchip-out:hover { background: #bd2a5e; border-color: #bd2a5e; color: var(--cream); }
+
+/* ── Andras live-pekare ─────────────────────────────────────────────────────── */
+.idea-cursors { position: fixed; inset: 0; z-index: 70; pointer-events: none; }
+.idea-cursor { position: absolute; transform: translate(-2px, -2px); transition: left 0.08s linear, top 0.08s linear; will-change: left, top; }
+.idea-cursor-name {
+  position: absolute; left: 14px; top: 12px;
+  font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.04em;
+  color: var(--cream); padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(161,35,92,0.25);
+}
+
+/* ── Login-modal (editorial, cream/rosa) ────────────────────────────────────── */
+.idea-modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(70, 20, 42, 0.32); backdrop-filter: blur(3px);
+  animation: idea-fade 0.2s ease both;
+}
+.idea-modal {
+  width: 100%; max-width: 380px; background: var(--paper);
+  border: 1px solid var(--hairline); border-radius: 16px; padding: 26px 24px 22px;
+  box-shadow: 0 30px 70px -30px rgba(161,35,92,0.5);
+}
+.idea-modal-title { font-family: var(--serif); font-style: italic; font-weight: 560; font-size: 24px; color: var(--bright); margin: 0 0 6px; }
+.idea-modal-sub { font-size: 13.5px; line-height: 1.55; color: var(--ink-soft); margin: 0 0 18px; }
+.idea-modal-input {
+  width: 100%; padding: 11px 13px; margin-bottom: 11px; font-size: 15px; color: var(--ink);
+  background: var(--cream); border: 1px solid var(--hairline-strong); border-radius: 10px; outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.idea-modal-input:focus-visible { border-color: var(--bright); box-shadow: 0 0 0 3px rgba(255,95,162,0.18); outline: none; }
+.idea-modal-err { font-size: 12.5px; font-weight: 600; color: var(--bright); margin: 2px 0 10px; }
+.idea-modal-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.idea-modal-link { font-family: var(--sans); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); background: none; border: none; padding: 0; cursor: pointer; }
+.idea-modal-link:hover { color: var(--bright); }
+.idea-btn-ghost {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink); background: transparent; border: 1px solid var(--hairline-strong); border-radius: 999px; padding: 9px 15px; cursor: pointer;
+}
+.idea-btn-ghost:hover { border-color: var(--bright); color: var(--bright); }
+.idea-btn-primary {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--cream); background: var(--btn); border: none; border-radius: 999px; padding: 9px 18px; cursor: pointer;
+  transition: background 0.2s ease;
+}
+.idea-btn-primary:hover { background: #bd2a5e; }
+.idea-btn-primary:disabled { opacity: 0.5; cursor: default; }
+
+/* Smal skärm: namnetiketter och avatarer får vika undan. */
+@media (max-width: 719px) {
+  .idea-presence { display: none; }
+  .idea-authchip { max-width: 120px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .idea-cursor { transition: none; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

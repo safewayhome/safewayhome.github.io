@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- OWASP A05/A03 (Content-Security-Policy): samma strikta grund som tavlan. script-src 'self'
+         (inga inline-script), style-src 'unsafe-inline' krävs av React-inline-stilar + Google Fonts.
+         connect-src https + wss: kartan synkar mot Supabase (REST + Realtime). img-src https: för
+         uppladdade idébilder (Storage-URL:er) + data:/blob: för lokalt läge.
+         OBS: frame-ancestors ignoreras i meta-taggar per CSP-specen och står kvar som dokumentation:
+         det verkliga clickjacking-skyddet sätts som svarshuvud (Cloudflare-regel framför Pages). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; form-action 'self'" />
+    <title>LedMig: Idea Web</title>
+    <meta name="description" content="Internal brainstorming canvas for the LedMig team: a spider-web map of ideas with draggable blocks, categories and image cores." />
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- Favicon: samma streckade neonhjärta som /ideel (en familj, ett märke). -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><g fill='none' stroke='%23ff5fa2' stroke-width='9' stroke-linecap='round' stroke-linejoin='round'><path d='M61 76 C78 63 92 52 92 36 C92 24 84 16 73 16 C62 16 53 24 50 31 C47 24 38 16 27 16 C16 16 8 24 8 36 C8 52 22 63 39 76' pathLength='160' stroke-dasharray='11 9.4'/><path d='M41 79 L50 87 L59 79'/><path d='M50 37 L50 41'/></g></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Samma typsnittstrio som /ideel: Fraunces (rubriker), Karla (brödtext), Spline Sans Mono (etiketter). -->
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..700&family=Karla:ital,wght@0,400..700;1,400..700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <!-- Varm gräddvit bakgrund redan på body så sidan inte blixtrar innan React + CSS laddats. -->
+  <body style="margin:0;background:#f7f1e6">
+    <div id="root"></div>
+    <script type="module" src="/src/idea/main.jsx"></script>
+  </body>
+</html>
